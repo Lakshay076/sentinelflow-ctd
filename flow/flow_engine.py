@@ -51,6 +51,31 @@ class FlowEngine:
 
         return (endpoint_b, endpoint_a, protocol)
 
+    def is_new_flow(
+        self,
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        protocol
+    ) -> bool:
+        """
+        STAGE 2 ADDITION.
+
+        Check whether this packet would start a brand-new
+        flow, WITHOUT changing any state.
+
+        This is used by the beacon tracker: it only cares
+        about the moment a NEW connection begins, not every
+        packet inside it.
+        """
+
+        key = self._get_key(
+            src_ip, dst_ip, src_port, dst_port, protocol
+        )
+
+        return key not in self.flows
+
     def process_packet(self, packet: PacketRecord):
 
         src_port = packet.src_port or 0
