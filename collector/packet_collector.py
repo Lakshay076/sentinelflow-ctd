@@ -300,8 +300,18 @@ def background_flusher():
     while True:
         time.sleep(0.5)
         now = time.time()
+
         with pipeline_lock:
+
+            # Resolve alerts independently of incoming traffic.
+            # This ensures alerts become RESOLVED after 5 minutes
+            # even when the monitored interface becomes completely idle.
+            alert_manager.resolve_stale(
+                timestamp=now
+            )
+
             features = window_manager.flush_if_ready(now)
+
             if features:
                 source_features = source_aggregator.get_features(
                     features["window_duration"]
@@ -314,7 +324,6 @@ def background_flusher():
                     source_features,
                     now,
                 )
-
 
 def main():
     global INTERFACE
