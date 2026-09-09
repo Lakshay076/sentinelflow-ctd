@@ -76,6 +76,7 @@ def detect_port_scan(features: Dict) -> DetectionResult:
 
     detected = (
         unique_ports >= MIN_DESTINATION_PORTS
+        and syn_ratio >= MIN_SYN_RATIO
         and score >= 2
     )
 

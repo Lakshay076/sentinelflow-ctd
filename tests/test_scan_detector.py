@@ -57,6 +57,26 @@ def main():
         port_scan
     )
 
+    # --------------------------------------------------
+    # Victim response traffic — must NOT be port scan
+    # --------------------------------------------------
+
+    victim_response = {
+
+        "unique_destination_ports": 93,
+
+        "active_flows": 93,
+
+        "syn_packet_ratio": 0.0,
+
+        "flows_per_second": 93.0,
+    }
+
+    print_result(
+        "VICTIM RESPONSE TRAFFIC",
+        victim_response
+    )
+
 
 if __name__ == "__main__":
     main()

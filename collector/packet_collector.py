@@ -58,9 +58,8 @@ tls_tracker = TLSTracker(window_seconds=300.0)
 pipeline_lock = threading.Lock()
 
 
-def evaluate_window(window_features, timestamp):
+def evaluate_window(window_features, source_features, timestamp):
     security_features = calculate_security_features(window_features)
-    source_features = source_aggregator.get_features(window_features["window_duration"])
     behavior_features = behavior_window.get_source_features(current_timestamp=timestamp)
     beacon_features = beacon_tracker.get_features(current_timestamp=timestamp)
     dns_features = dns_tracker.get_features(current_timestamp=timestamp)
@@ -256,46 +255,45 @@ def process_packet(packet):
                 dst_ip=ip.dst,
             )
 
+        packet_data = dict(
+            src_ip=ip.src,
+            dst_ip=ip.dst,
+            protocol=protocol,
+            packet_bytes=len(packet),
+            src_port=src_port or 0,
+            dst_port=dst_port or 0,
+            tcp_syn=tcp_syn,
+            tcp_ack=tcp_ack,
+            tcp_rst=tcp_rst,
+        )
+
+        # Check whether this packet closes the current
+        # fixed observation window BEFORE adding it to
+        # the source-level aggregator.
         window_features = window_manager.add_packet(
             timestamp=timestamp,
-            src_ip=ip.src,
-            dst_ip=ip.dst,
-            protocol=protocol,
-            packet_bytes=len(packet),
-            src_port=src_port or 0,
-            dst_port=dst_port or 0,
-            tcp_syn=tcp_syn,
-            tcp_ack=tcp_ack,
-            tcp_rst=tcp_rst,
-        )
-
-        source_aggregator.add_packet(
-            src_ip=ip.src,
-            dst_ip=ip.dst,
-            protocol=protocol,
-            packet_bytes=len(packet),
-            src_port=src_port or 0,
-            dst_port=dst_port or 0,
-            tcp_syn=tcp_syn,
-            tcp_ack=tcp_ack,
-            tcp_rst=tcp_rst,
-        )
-
-        behavior_window.add_packet(
-            timestamp=timestamp,
-            src_ip=ip.src,
-            dst_ip=ip.dst,
-            protocol=protocol,
-            packet_bytes=len(packet),
-            src_port=src_port or 0,
-            dst_port=dst_port or 0,
-            tcp_syn=tcp_syn,
-            tcp_ack=tcp_ack,
-            tcp_rst=tcp_rst,
+            **packet_data,
         )
 
         if window_features:
-            evaluate_window(window_features, timestamp)
+            source_features = source_aggregator.get_features(
+                window_features["window_duration"]
+            )
+
+            source_aggregator.reset()
+
+            evaluate_window(
+                window_features,
+                source_features,
+                timestamp,
+            )
+
+        source_aggregator.add_packet(**packet_data)
+
+        behavior_window.add_packet(
+            timestamp=timestamp,
+            **packet_data,
+        )
 
 
 def background_flusher():
@@ -305,7 +303,17 @@ def background_flusher():
         with pipeline_lock:
             features = window_manager.flush_if_ready(now)
             if features:
-                evaluate_window(features, now)
+                source_features = source_aggregator.get_features(
+                    features["window_duration"]
+                )
+
+                source_aggregator.reset()
+
+                evaluate_window(
+                    features,
+                    source_features,
+                    now,
+                )
 
 
 def main():
