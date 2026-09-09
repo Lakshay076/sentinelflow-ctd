@@ -84,13 +84,18 @@ class FeatureContext:
 
         combined = dict(current)
 
+        behavior = self.behavior.get(source_ip, {})
+        for key, value in behavior.items():
+            if key not in combined:
+                combined[key] = value
+            elif isinstance(value, (int, float)) and isinstance(combined.get(key), (int, float)):
+                combined[key] = max(combined[key], value)
+
         for extra in (
-            self.behavior.get(source_ip, {}),
             self.beacon.get(source_ip, {}),
             self.dns.get(source_ip, {}),
             self.tls.get(source_ip, {}),
         ):
-
             for key, value in extra.items():
                 combined[key] = value
 

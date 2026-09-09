@@ -95,12 +95,20 @@ def _try_load():
 
         return
 
-    import joblib
+    try:
+        import joblib
 
-    _model = joblib.load(MODEL_PATH)
+        _model = joblib.load(MODEL_PATH)
 
-    with open(STATS_PATH) as f:
-        _stats = json.load(f)
+        with open(STATS_PATH) as f:
+            _stats = json.load(f)
+    except Exception as e:
+        if not _warned_missing:
+            print(
+                f"[ML detector] Could not load model ({e}). "
+                "Rule-based detectors will still run normally."
+            )
+            _warned_missing = True
 
 
 def _explain(vector, stats):
@@ -160,12 +168,31 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
             reasons=[],
         )
 
+    # Ensure source has performed active traffic before evaluating ML anomaly
+    # Idle or trivial background traffic (e.g. 1-2 packets) is not an anomaly
+    packets = features.get("packets", 0)
+    bytes_sent = features.get("bytes", 0)
+    flows = features.get("active_flows", 0)
+    dns_count = features.get("dns_query_count", 0)
+    tls_count = features.get("tls_client_hello_count", 0)
+
+    if packets < 5 and bytes_sent < 500 and flows < 3 and dns_count < 2 and tls_count < 1:
+        return DetectionResult(
+            detected=False,
+            attack_type=None,
+            severity="NONE",
+            score=0,
+            confidence=0.0,
+            reasons=[],
+        )
+
     vector = features_to_vector(features)
 
     prediction = _model.predict([vector])[0]
     raw_score = _model.decision_function([vector])[0]
 
-    is_anomaly = prediction == -1
+    # Only flag as anomaly if the IsolationForest predicts -1 and score is meaningfully negative
+    is_anomaly = (prediction == -1) and (raw_score < -0.04)
 
     if not is_anomaly:
 
@@ -180,13 +207,13 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
 
     # Convert the raw score into a friendlier 0-1 confidence.
     # More negative raw_score = more anomalous.
-    confidence = min(
+    confidence = float(min(
         1.0,
         max(
             MIN_CONFIDENCE_WHEN_DETECTED,
             -raw_score / CONFIDENCE_SCALE,
         ),
-    )
+    ))
 
     if confidence >= 0.75:
         severity = "HIGH"
@@ -207,7 +234,7 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
         detected=True,
         attack_type="ML_ANOMALY",
         severity=severity,
-        score=round(confidence * 4),
+        score=int(round(confidence * 4)),
         confidence=confidence,
         reasons=reasons,
     )

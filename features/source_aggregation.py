@@ -18,6 +18,7 @@ class SourceAggregator:
         return {
             "packets": 0,
             "bytes": 0,
+            "bytes_received": 0,
             "tcp_packets": 0,
             "udp_packets": 0,
             "icmp_packets": 0,
@@ -42,9 +43,11 @@ class SourceAggregator:
         tcp_rst=False,
     ):
         source = self.sources[src_ip]
+        dest = self.sources[dst_ip]
 
         source["packets"] += 1
         source["bytes"] += packet_bytes
+        dest["bytes_received"] += packet_bytes
 
         source["destination_ips"].add(dst_ip)
 
@@ -85,59 +88,43 @@ class SourceAggregator:
         results = {}
 
         for src_ip, source in self.sources.items():
-
             packets = source["packets"]
             flows = len(source["flows"])
+            bytes_sent = source["bytes"]
+            bytes_received = source["bytes_received"]
+
+            if bytes_received > 0:
+                ratio = bytes_sent / bytes_received
+            elif bytes_sent > 0:
+                ratio = float(bytes_sent)
+            else:
+                ratio = 1.0
 
             results[src_ip] = {
                 "packets": packets,
-                "bytes": source["bytes"],
-
-                "packets_per_second":
-                    packets / duration,
-
-                "bytes_per_second":
-                    source["bytes"] / duration,
-
-                "tcp_packets":
-                    source["tcp_packets"],
-
-                "udp_packets":
-                    source["udp_packets"],
-
-                "icmp_packets":
-                    source["icmp_packets"],
-
-                "tcp_syn":
-                    source["tcp_syn"],
-
-                "tcp_ack":
-                    source["tcp_ack"],
-
-                "tcp_rst":
-                    source["tcp_rst"],
-
-                "unique_destinations":
-                    len(source["destination_ips"]),
-
-                "unique_destination_ports":
-                    len(source["destination_ports"]),
-
-                "active_flows":
-                    flows,
-
-                "flows_per_second":
-                    flows / duration,
-
-                "syn_packet_ratio":
-                    source["tcp_syn"] / max(packets, 1),
-
-                "rst_packet_ratio":
-                    source["tcp_rst"] / max(packets, 1),
-
-                "ports_per_destination":
+                "bytes": bytes_sent,
+                "bytes_received": bytes_received,
+                "outbound_inbound_ratio": ratio,
+                "packets_per_second": packets / duration,
+                "bytes_per_second": bytes_sent / duration,
+                "tcp_packets": source["tcp_packets"],
+                "udp_packets": source["udp_packets"],
+                "icmp_packets": source["icmp_packets"],
+                "tcp_syn": source["tcp_syn"],
+                "tcp_ack": source["tcp_ack"],
+                "tcp_rst": source["tcp_rst"],
+                "syn_rate": source["tcp_syn"] / duration,
+                "rst_rate": source["tcp_rst"] / duration,
+                "unique_destinations": len(source["destination_ips"]),
+                "unique_destination_ports": len(source["destination_ports"]),
+                "active_flows": flows,
+                "flows_per_second": flows / duration,
+                "syn_packet_ratio": source["tcp_syn"] / max(packets, 1),
+                "rst_packet_ratio": source["tcp_rst"] / max(packets, 1),
+                "ports_per_destination": (
                     len(source["destination_ports"])
-                    / max(len(source["destination_ips"]), 1),
+                    / max(len(source["destination_ips"]), 1)
+                ),
             }
 
         return results

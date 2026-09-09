@@ -352,3 +352,14 @@ class WindowManager:
         self.current.add_packet(**packet_data)
 
         return features
+
+    def flush_if_ready(self, current_timestamp: float):
+        if self.current is None or self.current.packets == 0:
+            return None
+
+        if current_timestamp >= self.current.window_start + self.window_seconds:
+            features = self.current.to_features(self.window_seconds)
+            self.current = None
+            return features
+
+        return None

@@ -98,6 +98,7 @@ class BehaviorWindow:
             lambda: {
                 "packets": 0,
                 "bytes": 0,
+                "bytes_received": 0,
                 "tcp_packets": 0,
                 "udp_packets": 0,
                 "icmp_packets": 0,
@@ -126,9 +127,11 @@ class BehaviorWindow:
             ) = event
 
             source = sources[src_ip]
+            dest = sources[dst_ip]
 
             source["packets"] += 1
             source["bytes"] += packet_bytes
+            dest["bytes_received"] += packet_bytes
 
             source["destinations"].add(dst_ip)
 
@@ -186,61 +189,44 @@ class BehaviorWindow:
             ports = len(
                 source["destination_ports"]
             )
+            bytes_sent = source["bytes"]
+            bytes_received = source["bytes_received"]
+
+            if bytes_received > 0:
+                ratio = bytes_sent / bytes_received
+            elif bytes_sent > 0:
+                ratio = float(bytes_sent)
+            else:
+                ratio = 1.0
 
             results[src_ip] = {
-
                 "packets": packets,
-
-                "bytes":
-                    source["bytes"],
-
-                "packets_per_second":
-                    packets / duration,
-
-                "bytes_per_second":
-                    source["bytes"] / duration,
-
-                "tcp_packets":
-                    source["tcp_packets"],
-
-                "udp_packets":
-                    source["udp_packets"],
-
-                "icmp_packets":
-                    source["icmp_packets"],
-
-                "tcp_syn":
-                    source["tcp_syn"],
-
-                "tcp_ack":
-                    source["tcp_ack"],
-
-                "tcp_rst":
-                    source["tcp_rst"],
-
-                "unique_destinations":
-                    destinations,
-
-                "unique_destination_ports":
-                    ports,
-
-                "active_flows":
-                    flows,
-
-                "flows_per_second":
-                    flows / duration,
-
-                "syn_packet_ratio":
-                    source["tcp_syn"]
-                    / max(packets, 1),
-
-                "rst_packet_ratio":
-                    source["tcp_rst"]
-                    / max(packets, 1),
-
-                "ports_per_destination":
-                    ports
-                    / max(destinations, 1),
+                "bytes": bytes_sent,
+                "bytes_received": bytes_received,
+                "outbound_inbound_ratio": ratio,
+                "packets_per_second": packets / duration,
+                "bytes_per_second": bytes_sent / duration,
+                "tcp_packets": source["tcp_packets"],
+                "udp_packets": source["udp_packets"],
+                "icmp_packets": source["icmp_packets"],
+                "tcp_syn": source["tcp_syn"],
+                "tcp_ack": source["tcp_ack"],
+                "tcp_rst": source["tcp_rst"],
+                "syn_rate": source["tcp_syn"] / duration,
+                "rst_rate": source["tcp_rst"] / duration,
+                "unique_destinations": destinations,
+                "unique_destination_ports": ports,
+                "active_flows": flows,
+                "flows_per_second": flows / duration,
+                "syn_packet_ratio": (
+                    source["tcp_syn"] / max(packets, 1)
+                ),
+                "rst_packet_ratio": (
+                    source["tcp_rst"] / max(packets, 1)
+                ),
+                "ports_per_destination": (
+                    ports / max(destinations, 1)
+                ),
             }
 
         return results

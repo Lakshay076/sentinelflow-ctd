@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes.alerts import router as alerts_router
+from api.routes.pcap import router as pcap_router
 from alerts.alert_store import AlertStore
 
 
@@ -8,21 +9,20 @@ app = FastAPI(
     title="CTD — Cyber Threat Detection API",
     version="1.0.0",
     description=(
-        "Detection-only network threat monitoring API."
+        "Detection-only network threat monitoring API with SIH-aligned PCAP replay and throughput benchmarking."
     ),
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://192.168.56.105:5173",
-    ],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(alerts_router)
+app.include_router(pcap_router)
 
 
 @app.get("/")

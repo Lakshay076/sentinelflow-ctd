@@ -1,0 +1,51 @@
+{
+  "pcap_file": "demo.pcap",
+  "expected_detections": [
+    {
+      "source_ip": "10.0.0.50",
+      "attack_type": "PORT_SCAN"
+    },
+    {
+      "source_ip": "10.0.0.51",
+      "attack_type": "SYN_FLOOD"
+    },
+    {
+      "source_ip": "10.0.0.52",
+      "attack_type": "DATA_EXFILTRATION"
+    },
+    {
+      "source_ip": "10.0.0.53",
+      "attack_type": "C2_BEACONING"
+    },
+    {
+      "source_ip": "10.0.0.54",
+      "attack_type": "DGA_DNS_TUNNELLING"
+    },
+    {
+      "source_ip": "10.0.0.55",
+      "attack_type": "TLS_METADATA_ANOMALY"
+    }
+  ],
+  "benign_ips": [
+    "10.0.0.10",
+    "10.0.0.11",
+    "10.0.0.12",
+    "10.0.0.13",
+    "10.0.0.14",
+    "10.0.0.15",
+    "10.0.0.16",
+    "10.0.0.17",
+    "10.0.0.18",
+    "10.0.0.19",
+    "10.0.0.20",
+    "10.0.0.21",
+    "10.0.0.22",
+    "10.0.0.23",
+    "10.0.0.24",
+    "10.0.0.25",
+    "10.0.0.26",
+    "10.0.0.27",
+    "10.0.0.28",
+    "10.0.0.29"
+  ]
+}
