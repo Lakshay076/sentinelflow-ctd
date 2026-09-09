@@ -37,3 +37,7 @@ Thumbs.db
 # Backups
 *.backup
 *.bak
+
+# Local packet captures
+data/*.pcap
+data/*.pcapng

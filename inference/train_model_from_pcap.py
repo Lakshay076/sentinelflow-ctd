@@ -191,6 +191,10 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                 packet_bytes=len(packet), src_port=src_port or 0, dst_port=dst_port or 0,
                 tcp_syn=tcp_syn, tcp_ack=tcp_ack, tcp_rst=tcp_rst,
             )
+
+            if window_features:
+                handle_completed_window(window_features, timestamp)
+
             source_aggregator.add_packet(
                 src_ip=ip.src, dst_ip=ip.dst, protocol=protocol, packet_bytes=len(packet),
                 src_port=src_port or 0, dst_port=dst_port or 0,
@@ -203,9 +207,6 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
             )
 
             packet_count += 1
-
-            if window_features:
-                handle_completed_window(window_features, timestamp)
 
     print(f"Processed {packet_count} packets from {pcap_path}")
     print(f"Collected {len(vectors)} per-source-window feature vectors")
