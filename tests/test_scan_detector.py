@@ -10,7 +10,7 @@ def print_result(title, features):
 
     result = detect_port_scan(features)
 
-    for key, value in result.items():
+    for key, value in result.to_dict().items():
 
         print(f"{key:15} : {value}")
 

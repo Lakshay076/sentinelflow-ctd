@@ -75,17 +75,18 @@ def process_packet(packet):
     )
 
 
-print("=" * 70)
-print("CTD — LIVE FEATURE ENGINE")
-print("=" * 70)
-print(f"Interface : {INTERFACE}")
-print("Payload   : NOT INSPECTED")
-print("Status    : Listening...")
-print("=" * 70)
+if __name__ == "__main__":
+    print("=" * 70)
+    print("CTD — LIVE FEATURE ENGINE")
+    print("=" * 70)
+    print(f"Interface : {INTERFACE}")
+    print("Payload   : NOT INSPECTED")
+    print("Status    : Listening...")
+    print("=" * 70)
 
+    sniff(
+        iface=INTERFACE,
+        prn=process_packet,
+        store=False
+    )
 
-sniff(
-    iface=INTERFACE,
-    prn=process_packet,
-    store=False
-)

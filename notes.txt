@@ -1,0 +1,68 @@
+# Real Network Traffic Injection & PCAP Replay Guide
+
+1. PCAP Replay & SIH Ingestion (Recommended & Read-Only)
+-------------------------------------------------------
+# Step 1: Generate a multi-host synthetic gateway PCAP with labeled attacks:
+python3 scripts/generate_synthetic_traffic.py --out demo.pcap
+
+# Step 2: Replay the PCAP file through the detection engine (Benchmark Mode):
+python3 -m collector.pcap_replay_collector demo.pcap --max-speed
+
+# Step 3: Validate detection accuracy (Precision, Recall, F1):
+python3 scripts/validate_detections.py demo.pcap.ground_truth.json
+
+# Step 4: Train ML model on benign PCAP capture:
+python3 scripts/generate_synthetic_traffic.py --out benign.pcap --attacks
+python3 -m inference.train_model_from_pcap benign.pcap
+
+
+2. Live Network Sniffing & Injection (Optional)
+------------------------------------------------
+# Start live collector (on macOS en0 is default, or pass custom interface):
+sudo python3 -m collector.packet_collector en0
+# Or loopback:
+# sudo python3 -m collector.packet_collector lo0
+
+A. Port Scan (PORT_SCAN)
+python3 -c "import socket; [((s := socket.socket(socket.AF_INET, socket.SOCK_STREAM)), s.settimeout(0.05), s.connect_ex(('1.1.1.1', p)), s.close()) for p in range(20, 35)]"
+
+B. SYN Flood (SYN_FLOOD)
+python3 -c "import socket; [((s := socket.socket(socket.AF_INET, socket.SOCK_STREAM)), s.settimeout(0.02), s.connect_ex(('1.1.1.1', 80)), s.close()) for _ in range(70)]"
+
+C. Data Exfiltration (DATA_EXFILTRATION)
+python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); data = b'X' * 1024; [s.sendto(data, ('1.1.1.1', 9999)) for _ in range(600)]"
+
+D. Botnet C2 Beaconing (C2_BEACONING)
+python3 -c "import socket, time; [((s := socket.socket(socket.AF_INET, socket.SOCK_STREAM)), s.settimeout(0.1), s.connect_ex(('1.1.1.1', 80)), s.close(), time.sleep(1.0)) for _ in range(5)]"
+
+E. DGA / DNS Tunnelling (DGA_DNS_TUNNELLING)
+python3 -c "import socket, random, string; [((lambda d: (exec('try:\n socket.getaddrinfo(d, 53)\nexcept:\n pass', {'socket': socket, 'd': d})))(''.join(random.choices(string.ascii_lowercase + string.digits, k=40)) + '.test.local')) for _ in range(8)]"
+
+F. TLS Metadata Anomaly (TLS_METADATA_ANOMALY)
+python3 -c "import socket, ssl; ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE; [((s := socket.socket(socket.AF_INET, socket.SOCK_STREAM)), s.settimeout(0.5), (lambda ss: (ss.connect_ex(('1.1.1.1', 443)), ss.close()))(ctx.wrap_socket(s, server_hostname=None))) for _ in range(6)]"
+
+
+3. Running the Servers & Verification Tests
+--------------------------------------------
+# Backend:
+source .venv/bin/activate
+uvicorn api.main:app --reload --port 8000
+
+# Frontend:
+cd frontend
+npm run dev
+
+# Run all attack detection verification tests:
+python3 -m tests.test_all_attacks
+
+# Run API endpoint and PCAP integration tests:
+python3 -m tests.test_api_endpoints
+
+
+4. Triggering Simulations via curl
+-----------------------------------
+curl -X POST http://localhost:8000/api/alerts/simulate/PORT_SCAN
+curl -X POST http://localhost:8000/api/alerts/simulate/SYN_FLOOD
+curl -X POST http://localhost:8000/api/alerts/simulate/DATA_EXFILTRATION
+curl -X POST http://localhost:8000/api/alerts/resolve-all
+curl -X POST http://localhost:8000/api/alerts/clear-all

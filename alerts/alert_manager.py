@@ -27,7 +27,7 @@ class AlertManager:
 
     def __init__(
         self,
-        resolve_after: float = 10.0,
+        resolve_after: float = 300.0,
     ):
 
         if resolve_after <= 0:
