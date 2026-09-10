@@ -9,6 +9,8 @@ from features.feature_context import FeatureContext
 from detectors.detector_engine import DetectorEngine
 from features.behavior_window import BehaviorWindow
 from alerts.alert_manager import AlertManager
+from telemetry.live_metrics import live_metrics
+
 
 # STAGE 2, 3, 4 ADDITIONS:
 from features.beacon_tracker import BeaconTracker
@@ -60,6 +62,12 @@ pipeline_lock = threading.Lock()
 
 def evaluate_window(window_features, source_features, timestamp):
     security_features = calculate_security_features(window_features)
+    live_metrics.add_window(
+        features=window_features,
+        source_features=source_features,
+        timestamp=timestamp,
+    )
+
     behavior_features = behavior_window.get_source_features(current_timestamp=timestamp)
     beacon_features = beacon_tracker.get_features(current_timestamp=timestamp)
     dns_features = dns_tracker.get_features(current_timestamp=timestamp)

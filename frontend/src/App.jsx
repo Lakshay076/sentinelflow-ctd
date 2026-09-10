@@ -95,9 +95,16 @@ const DETECTORS_CONFIG = [
 ];
 
 function App() {
+  const [currentPage, setCurrentPage] = useState("overview");
+
   const [stats, setStats] = useState(null);
   const [activeAlerts, setActiveAlerts] = useState([]);
   const [history, setHistory] = useState([]);
+  const [liveMetrics, setLiveMetrics] = useState({
+    latest: null,
+    history: [],
+  });
+
   const [health, setHealth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -123,6 +130,7 @@ function App() {
         statsResponse,
         activeResponse,
         historyResponse,
+        metricsResponse,
         filesResponse,
         benchmarkResponse,
       ] = await Promise.all([
@@ -130,6 +138,7 @@ function App() {
         fetch(`${API_BASE}/api/stats`),
         fetch(`${API_BASE}/api/alerts/active`),
         fetch(`${API_BASE}/api/alerts/history`),
+        fetch(`${API_BASE}/api/metrics/live`),
         fetch(`${API_BASE}/api/pcap/files`).catch(() => ({ ok: false })),
         fetch(`${API_BASE}/api/pcap/benchmark`).catch(() => ({ ok: false })),
       ]);
@@ -147,9 +156,12 @@ function App() {
       const statsData = await statsResponse.json();
       const activeData = await activeResponse.json();
       const historyData = await historyResponse.json();
+      const metricsData = await metricsResponse.json();
+
 
       setHealth(healthData.status === "healthy");
       setStats(statsData);
+      setLiveMetrics(metricsData);
       setActiveAlerts(activeData.alerts);
       setHistory(historyData.alerts);
       setLastUpdated(new Date());
@@ -346,60 +358,206 @@ function App() {
       ? history
       : history.filter((a) => a.attack_type === filterType);
 
+    const pageTitles = {
+    overview: {
+      title: "Overview",
+      subtitle: "Network security operations at a glance",
+    },
+    live: {
+      title: "Live Monitoring",
+      subtitle: "Real-time passive traffic observation",
+    },
+    incidents: {
+      title: "Incidents",
+      subtitle: "Threat events and investigation history",
+    },
+    intel: {
+      title: "Threat Intelligence",
+      subtitle: "Detection coverage and threat classification",
+    },
+    analytics: {
+      title: "Analytics",
+      subtitle: "Performance, traffic and detection analytics",
+    },
+    demo: {
+      title: "Demo Lab",
+      subtitle: "Controlled threat simulation and PCAP replay",
+    },
+    team: {
+      title: "Our Team",
+      subtitle: "The team behind MONI",
+    },
+    about: {
+      title: "About MONI",
+      subtitle: "Architecture, mission and deployment model",
+    },
+  };
+
+  const activePage = pageTitles[currentPage] || pageTitles.overview;
+
   if (loading && !stats) {
     return (
       <div className="loading-screen">
         <Shield size={48} className="spin-slow" />
         <h1>SentinelFlow-CTD</h1>
-        <p>Connecting to detection server at {API_BASE}...</p>
+
+      <p>Connecting to detection server at {API_BASE}...</p>
       </div>
     );
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-icon">
-            <Shield size={24} />
-          </div>
-          <div>
-            <h1>SentinelFlow-CTD</h1>
-            <span>Cyber Threat Detection & Autonomous Monitoring</span>
-          </div>
+      <div className="app-shell">
+  <aside className="sidebar">
+    <button
+      className="sidebar-brand"
+      onClick={() => setCurrentPage("overview")}
+    >
+      <div className="brand-icon">
+        <Shield size={22} />
+      </div>
+
+      <div className="sidebar-brand-copy">
+        <div className="sidebar-brand-title">
+          <span>MONI</span>
+          <small>CTD</small>
+        </div>
+        <span>Cyber Threat Detection</span>
+      </div>
+    </button>
+
+    <div className="sidebar-section-label">OPERATIONS</div>
+
+    <nav className="sidebar-nav" aria-label="Primary navigation">
+      {[
+        { id: "overview", label: "Overview", icon: Activity },
+        { id: "live", label: "Live Monitoring", icon: Radio },
+        { id: "incidents", label: "Incidents", icon: AlertTriangle },
+        { id: "intel", label: "Threat Intelligence", icon: Shield },
+        { id: "analytics", label: "Analytics", icon: Gauge },
+      ].map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <button
+            key={item.id}
+            className={`sidebar-nav-item ${
+              currentPage === item.id ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage(item.id)}
+          >
+            <Icon size={17} />
+            <span>{item.label}</span>
+
+            {item.id === "incidents" && stats?.active_alerts > 0 && (
+              <span className="nav-count">
+                {stats.active_alerts}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+
+    <div className="sidebar-section-label sidebar-demo-label">
+      RESOURCES
+    </div>
+
+    <nav className="sidebar-nav">
+      {[
+        { id: "demo", label: "Demo Lab", icon: Zap },
+        { id: "team", label: "Our Team", icon: Award },
+        { id: "about", label: "About MONI", icon: BrainCircuit },
+      ].map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <button
+            key={item.id}
+            className={`sidebar-nav-item ${
+              currentPage === item.id ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage(item.id)}
+          >
+            <Icon size={17} />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+
+    <div className="sidebar-footer">
+      <div className="sidebar-system">
+        <span
+          className={`status-dot ${health ? "healthy" : "offline"}`}
+        />
+        <div>
+          <strong>{health ? "System Operational" : "API Offline"}</strong>
+          <span>Passive monitoring</span>
+        </div>
+      </div>
+
+      <div className="sidebar-readonly">
+        <Layers size={13} />
+        <span>READ-ONLY SENSOR</span>
+      </div>
+    </div>
+  </aside>
+
+  <div className="app-main">
+    <header className="topbar">
+      <div className="topbar-page">
+        <div>
+          <h1>{activePage.title}</h1>
+          <span>{activePage.subtitle}</span>
         </div>
 
-        <div className="topbar-right">
-          <div className="ingest-badge">
-            <Layers size={14} />
-            <span>READ-ONLY PCAP INGEST (DATA DIODE ALIGNED)</span>
-          </div>
+        {lastUpdated && (
+          <span className="topbar-updated">
+            Updated {lastUpdated.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
 
-          <div className="system-status">
-            <span className={`status-dot ${health ? "healthy" : "offline"}`} />
-            <span>{health ? "7 / 7 DETECTORS ARMED" : "API OFFLINE"}</span>
-
-            <button
-              className="refresh-button"
-              onClick={fetchData}
-              title="Refresh Telemetry"
-            >
-              <RefreshCw size={18} />
-            </button>
-          </div>
+      <div className="topbar-actions">
+        <div className="topbar-passive">
+          <Radio size={14} />
+          <span>PASSIVE / READ-ONLY</span>
         </div>
-      </header>
+
+        <div className="system-status">
+          <span
+            className={`status-dot ${health ? "healthy" : "offline"}`}
+          />
+          <span>
+            {health ? "SYSTEM OPERATIONAL" : "API OFFLINE"}
+          </span>
+        </div>
+
+        <button
+          className="refresh-button"
+          onClick={fetchData}
+          title="Refresh telemetry"
+          aria-label="Refresh telemetry"
+        >
+          <RefreshCw size={17} />
+        </button>
+      </div>
+    </header>
+
 
       <main className="dashboard">
-        {/* Page Heading & Mode Switcher */}
-        <section className="page-heading">
-          <div>
-            <h2>Threat Matrix & Ingest Benchmarking</h2>
-            <p>
-              Passive streaming threat detection across 7 specialized rule & AI
-              detectors with verified ground truth accuracy.
-            </p>
-          </div>
+        {currentPage === "overview" && (
+          <>
+            {/* Page Heading & Mode Switcher */}
+            <section className="page-heading">
+            <div>
+              <h2>Threat Matrix & Ingest Benchmarking</h2>
+              <p>
+                Passive streaming threat detection across 7 specialized rule & AI
+                detectors with verified ground truth accuracy.
+              </p>
+            </div>
 
           {lastUpdated && (
             <div className="heading-actions">
@@ -446,6 +604,7 @@ function App() {
             highlight={benchmarkResult != null}
           />
         </section>
+
 
         {/* PCAP Ingest, Replay & Benchmarking Hub */}
         {showTestPanel && (
@@ -898,12 +1057,34 @@ function App() {
             })}
           </div>
         </section>
+      </>
+      )}
+      {currentPage === "live" && (
+        <LiveMonitoringPage
+          liveMetrics={liveMetrics}
+          activeAlerts={activeAlerts}
+        />
+      )}
+
+      {currentPage !== "overview" && currentPage !== "live" && (
+        <section className="page-placeholder">
+          <div className="page-placeholder-body">
+            <Shield size={34} />
+            <h2>{activePage.title}</h2>
+            <p>
+              This MONI module is being prepared. The existing detection
+              pipeline remains active in the background.
+            </p>
+          </div>
+        </section>
+      )}
       </main>
 
       <footer>
-        SentinelFlow-CTD · Real-Time Passive Cyber Threat Detection Engine (SIH-Aligned PCAP Replay)
+         MONI · Passive Cyber Threat Detection Platform · SIH26145
       </footer>
     </div>
+   </div>
   );
 }
 
@@ -996,6 +1177,221 @@ function StatusBadge({ status }) {
 function formatAttackType(type) {
   const item = DETECTORS_CONFIG.find((d) => d.type === type);
   return item ? item.label : type;
+}
+
+function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
+  const latest = liveMetrics?.latest;
+  const points = liveMetrics?.history || [];
+
+  const maxPps = Math.max(
+    ...points.map((point) => point.packets_per_second || 0),
+    1
+  );
+
+  return (
+    <section className="live-monitoring-page">
+      <div className="live-page-intro">
+        <div>
+          <h2>Network Telemetry</h2>
+          <p>
+            Real-time observation of traffic received by the MONI sensor.
+            No payload decryption or inline intervention is performed.
+          </p>
+        </div>
+
+        <div className="live-page-status">
+          <span
+            className={`status-dot ${latest ? "healthy" : "offline"}`}
+          />
+          <div>
+            <strong>
+              {latest ? "LIVE TELEMETRY" : "WAITING FOR TELEMETRY"}
+            </strong>
+            <span>1-second observation windows</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="live-kpi-grid">
+        <div className="live-kpi-card">
+          <span>Packets / sec</span>
+          <strong>
+            {latest?.packets_per_second?.toFixed(1) ?? "—"}
+          </strong>
+          <small>Current window</small>
+        </div>
+
+        <div className="live-kpi-card">
+          <span>Flows / sec</span>
+          <strong>
+            {latest?.flows_per_second?.toFixed(1) ?? "—"}
+          </strong>
+          <small>Flow creation rate</small>
+        </div>
+
+        <div className="live-kpi-card">
+          <span>Bandwidth</span>
+          <strong>
+            {latest?.mbps?.toFixed(3) ?? "—"}
+            <small> Mbps</small>
+          </strong>
+          <small>Observed traffic</small>
+        </div>
+
+        <div className="live-kpi-card">
+          <span>Active Flows</span>
+          <strong>{latest?.active_flows ?? "—"}</strong>
+          <small>Current window</small>
+        </div>
+
+        <div className="live-kpi-card">
+          <span>Source IPs</span>
+          <strong>{latest?.unique_sources ?? "—"}</strong>
+          <small>Unique sources</small>
+        </div>
+
+        <div className="live-kpi-card">
+          <span>Destination IPs</span>
+          <strong>{latest?.unique_destinations ?? "—"}</strong>
+          <small>Unique destinations</small>
+        </div>
+      </div>
+
+      <div className="live-chart-card">
+        <div className="live-chart-header">
+          <div>
+            <h3>Packet Rate</h3>
+            <p>Last 60 seconds of completed observation windows</p>
+          </div>
+
+          <div className="live-chart-current">
+            <strong>
+              {latest?.packets_per_second?.toFixed(1) ?? "—"}
+            </strong>
+            <span>pkt/s</span>
+          </div>
+        </div>
+
+        <div className="traffic-chart">
+          {points.length === 0 ? (
+            <div className="traffic-chart-empty">
+              Waiting for traffic telemetry...
+            </div>
+          ) : (
+            points.map((point, index) => {
+              const value = point.packets_per_second || 0;
+              const height = Math.max(3, (value / maxPps) * 100);
+
+              return (
+                <div
+                  className="traffic-chart-column"
+                  key={`${point.timestamp}-${index}`}
+                  title={`${value.toFixed(1)} pkt/s`}
+                >
+                  <div
+                    className="traffic-chart-bar"
+                    style={{ height: `${height}%` }}
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="traffic-chart-axis">
+          <span>60s ago</span>
+          <span>30s ago</span>
+          <span>Now</span>
+        </div>
+      </div>
+
+      <div className="live-detail-grid">
+        <section className="live-detail-card">
+          <div className="live-detail-header">
+            <div>
+              <h3>Protocol Activity</h3>
+              <p>Current observation window</p>
+            </div>
+          </div>
+
+          <div className="protocol-grid">
+            <div>
+              <span>TCP</span>
+              <strong>{latest?.tcp_packets ?? "—"}</strong>
+            </div>
+
+            <div>
+              <span>UDP</span>
+              <strong>{latest?.udp_packets ?? "—"}</strong>
+            </div>
+
+            <div>
+              <span>ICMP</span>
+              <strong>{latest?.icmp_packets ?? "—"}</strong>
+            </div>
+
+            <div>
+              <span>TCP SYN</span>
+              <strong>{latest?.tcp_syn ?? "—"}</strong>
+            </div>
+
+            <div>
+              <span>TCP ACK</span>
+              <strong>{latest?.tcp_ack ?? "—"}</strong>
+            </div>
+
+            <div>
+              <span>TCP RST</span>
+              <strong>{latest?.tcp_rst ?? "—"}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="live-detail-card">
+          <div className="live-detail-header">
+            <div>
+              <h3>Active Threats</h3>
+              <p>Detections from the streaming pipeline</p>
+            </div>
+
+            <span className="count-badge danger-badge">
+              {activeAlerts?.length ?? 0}
+            </span>
+          </div>
+
+          {activeAlerts?.length ? (
+            <div className="live-threat-list">
+              {activeAlerts.slice(0, 5).map((alert) => (
+                <div
+                  className="live-threat-row"
+                  key={alert.alert_id}
+                >
+                  <div>
+                    <strong>
+                      {formatAttackType(alert.attack_type)}
+                    </strong>
+                    <span>{alert.source_ip}</span>
+                  </div>
+
+                  <div className="live-threat-meta">
+                    <SeverityBadge severity={alert.severity} />
+                    <span>
+                      {Math.round((alert.confidence || 0) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="live-no-threats">
+              <CheckCircle size={22} />
+              <span>No active threats detected</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
 }
 
 export default App;
