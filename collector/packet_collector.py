@@ -256,7 +256,12 @@ def process_packet(packet):
 
         flow = flow_engine.process_packet(record)
 
-        if is_new_flow:
+        # DNS request/response flows are excluded from C2 beacon
+        # timing analysis. Periodic DNS queries can otherwise
+        # look like beacon check-ins because they repeatedly
+        # contact the same resolver at regular intervals.
+        # Non-DNS TCP/UDP traffic remains eligible for C2 detection.
+        if is_new_flow and src_port != 53 and dst_port != 53:
             beacon_tracker.record_new_flow(
                 timestamp=timestamp,
                 src_ip=ip.src,
