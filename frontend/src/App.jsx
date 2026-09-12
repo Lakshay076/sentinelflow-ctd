@@ -24,6 +24,7 @@ import {
   Layers,
   Sparkles,
   Award,
+  X,
 } from "lucide-react";
 
 import "./App.css";
@@ -866,162 +867,6 @@ function App() {
           </div>
         </section>
 
-        {/* Attack Filter Tabs */}
-        <div className="filter-tabs">
-          <button
-            className={`filter-tab ${filterType === "ALL" ? "active" : ""}`}
-            onClick={() => setFilterType("ALL")}
-          >
-            All Attacks ({history.length})
-          </button>
-          {DETECTORS_CONFIG.map((det) => {
-            const count =
-              stats?.attack_types?.[det.type] ||
-              history.filter((a) => a.attack_type === det.type).length;
-            if (count === 0 && filterType !== det.type) return null;
-            return (
-              <button
-                key={det.type}
-                className={`filter-tab ${
-                  filterType === det.type ? "active" : ""
-                }`}
-                onClick={() => setFilterType(det.type)}
-              >
-                {det.label} ({count})
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Active Threats List */}
-        <section className="content-section">
-          <div className="section-header">
-            <div>
-              <h3>Active Threats</h3>
-              <p>Live security incidents detected in streaming observation windows</p>
-            </div>
-            <div className="section-header-actions">
-              {filteredActive.length > 0 && (
-                <button
-                  className="resolve-threats-btn-small"
-                  onClick={resolveAllAlerts}
-                  disabled={simulating !== null}
-                >
-                  <RotateCcw size={13} />
-                  Resolve All
-                </button>
-              )}
-              <span className="count-badge danger-badge">
-                {filteredActive.length}
-              </span>
-            </div>
-          </div>
-
-          {filteredActive.length === 0 ? (
-            <div className="empty-state">
-              <CheckCircle size={36} />
-              <h4>No Active Threats</h4>
-              <p>
-                {filterType === "ALL"
-                  ? "All network flows are within normal behavioral baselines."
-                  : `No active ${filterType} incidents currently detected.`}
-              </p>
-            </div>
-          ) : (
-            <div className="alert-list">
-              {filteredActive.map((alert) => (
-                <AlertCard key={alert.alert_id} alert={alert} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Incident History Table */}
-        <section className="content-section">
-          <div className="section-header">
-            <div>
-              <h3>Incident History & Audit Log</h3>
-              <p>Chronological record of all analyzed security events</p>
-            </div>
-            <div className="section-header-actions">
-              {filteredHistory.length > 0 && (
-                <button
-                  className="clear-history-btn-secondary"
-                  onClick={clearHistory}
-                  disabled={simulating !== null}
-                  title="Clear all resolved historical incidents"
-                >
-                  <Trash2 size={13} />
-                  Clear History
-                </button>
-              )}
-              <span className="count-badge">{filteredHistory.length}</span>
-            </div>
-          </div>
-
-          {filteredHistory.length === 0 ? (
-            <div className="empty-state">
-              <p>No historical incidents found.</p>
-            </div>
-          ) : (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Source IP</th>
-                    <th>Attack Type</th>
-                    <th>Severity</th>
-                    <th>Status</th>
-                    <th>Events</th>
-                    <th>Confidence</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHistory.map((alert) => (
-                    <tr key={alert.alert_id}>
-                      <td>#{alert.alert_id}</td>
-                      <td className="source">{alert.source_ip}</td>
-                      <td>
-                        <strong>{formatAttackType(alert.attack_type)}</strong>
-                      </td>
-                      <td>
-                        <SeverityBadge severity={alert.severity} />
-                      </td>
-                      <td>
-                        <StatusBadge status={alert.status} />
-                      </td>
-                      <td>{alert.event_count}</td>
-                      <td>
-                        <div className="confidence-cell">
-                          <div className="confidence-mini-bar">
-                            <div
-                              style={{
-                                width: `${Math.round(
-                                  (alert.confidence || 0) * 100
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <span>
-                            {Math.round((alert.confidence || 0) * 100)}%
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        {alert.duration
-                          ? `${alert.duration.toFixed(1)}s`
-                          : "< 1s"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
         {/* Attack Type Distribution */}
         <section className="attack-summary">
           <h3>Attack Class Breakdown</h3>
@@ -1066,6 +911,19 @@ function App() {
         />
       )}
 
+      {currentPage === "incidents" && (
+        <IncidentsPage
+          activeAlerts={activeAlerts}
+          history={history}
+          stats={stats}
+          filterType={filterType}
+          setFilterType={setFilterType}
+          onResolveAll={resolveAllAlerts}
+          onClearHistory={clearHistory}
+          simulating={simulating}
+        />
+      )}
+
       {currentPage !== "overview" && currentPage !== "live" && (
         <section className="page-placeholder">
           <div className="page-placeholder-body">
@@ -1096,6 +954,452 @@ function StatCard({ icon, label, value, danger = false, highlight = false }) {
         <span>{label}</span>
         <strong>{value}</strong>
       </div>
+    </div>
+  );
+}
+
+function IncidentsPage({
+  activeAlerts,
+  history,
+  stats,
+  filterType,
+  setFilterType,
+  onResolveAll,
+  onClearHistory,
+  simulating,
+}) {
+  const filteredActive =
+    filterType === "ALL"
+      ? activeAlerts
+      : activeAlerts.filter((alert) => alert.attack_type === filterType);
+
+  const filteredHistory =
+    filterType === "ALL"
+      ? history
+      : history.filter((alert) => alert.attack_type === filterType);
+
+  const [selectedIncident, setSelectedIncident] = useState(null);
+
+  const highSeverityCount = history.filter(
+    (alert) => (alert.severity || "").toUpperCase() === "HIGH"
+  ).length;
+
+  const mediumSeverityCount = history.filter(
+    (alert) => (alert.severity || "").toUpperCase() === "MEDIUM"
+  ).length;
+
+  return (
+    <section className="incidents-page">
+      <div className="incidents-intro">
+        <div>
+          <h2>Security Incidents</h2>
+          <p>
+            Investigate threats detected by the MONI streaming detection
+            pipeline and review their supporting evidence.
+          </p>
+        </div>
+
+        <div className="incident-posture">
+          <span
+            className={`status-dot ${
+              activeAlerts.length > 0 ? "danger" : "healthy"
+            }`}
+          />
+          <div>
+            <strong>
+              {activeAlerts.length > 0
+                ? `${activeAlerts.length} ACTIVE THREAT${
+                    activeAlerts.length === 1 ? "" : "S"
+                  }`
+                : "NO ACTIVE THREATS"}
+            </strong>
+            <span>Detection pipeline status</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="incident-kpi-grid">
+        <div className="incident-kpi-card">
+          <span>Total Incidents</span>
+          <strong>{stats?.total_alerts ?? history.length}</strong>
+          <small>All recorded detections</small>
+        </div>
+
+        <div className="incident-kpi-card incident-kpi-danger">
+          <span>Active Threats</span>
+          <strong>{stats?.active_alerts ?? activeAlerts.length}</strong>
+          <small>Require attention</small>
+        </div>
+
+        <div className="incident-kpi-card">
+          <span>Resolved</span>
+          <strong>{stats?.resolved_alerts ?? 0}</strong>
+          <small>Closed incidents</small>
+        </div>
+
+        <div className="incident-kpi-card">
+          <span>High Severity</span>
+          <strong>{highSeverityCount}</strong>
+          <small>{mediumSeverityCount} medium severity</small>
+        </div>
+      </div>
+
+      <div className="incident-filter-card">
+        <div>
+          <strong>Incident Filters</strong>
+          <span>Focus investigation on a specific threat class.</span>
+        </div>
+
+        <div className="incident-filter-buttons">
+          <button
+            className={`incident-filter-btn ${
+              filterType === "ALL" ? "active" : ""
+            }`}
+            onClick={() => setFilterType("ALL")}
+          >
+            All
+            <span>{history.length}</span>
+          </button>
+
+          {DETECTORS_CONFIG.map((detector) => {
+            const count = history.filter(
+              (alert) => alert.attack_type === detector.type
+            ).length;
+
+            if (count === 0 && filterType !== detector.type) {
+              return null;
+            }
+
+            return (
+              <button
+                key={detector.type}
+                className={`incident-filter-btn ${
+                  filterType === detector.type ? "active" : ""
+                }`}
+                onClick={() => setFilterType(detector.type)}
+              >
+                {detector.label}
+                <span>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <section className="incident-section-card">
+        <div className="incident-section-header">
+          <div>
+            <h3>Active Threats</h3>
+            <p>
+              Live incidents currently maintained by the alert lifecycle
+              manager.
+            </p>
+          </div>
+
+          <div className="incident-section-actions">
+            {filteredActive.length > 0 && (
+              <button
+                className="resolve-threats-btn-small"
+                onClick={onResolveAll}
+                disabled={simulating !== null}
+              >
+                <RotateCcw size={13} />
+                Resolve All
+              </button>
+            )}
+
+            <span className="count-badge danger-badge">
+              {filteredActive.length}
+            </span>
+          </div>
+        </div>
+
+        {filteredActive.length === 0 ? (
+          <div className="incident-empty-state">
+            <CheckCircle size={34} />
+            <h4>No Active Threats</h4>
+            <p>
+              {filterType === "ALL"
+                ? "All observed network behavior is currently within the active alert baseline."
+                : `No active ${formatAttackType(
+                    filterType
+                  )} incidents are currently detected.`}
+            </p>
+          </div>
+        ) : (
+          <div className="alert-list">
+            {filteredActive.map((alert) => (
+              <AlertCard key={alert.alert_id} alert={alert} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="incident-section-card">
+        <div className="incident-section-header">
+          <div>
+            <h3>Incident History & Audit Log</h3>
+            <p>
+              Chronological record of detections generated by the monitoring
+              pipeline.
+            </p>
+          </div>
+
+          <div className="incident-section-actions">
+            {filteredHistory.length > 0 && (
+              <button
+                className="clear-history-btn-secondary"
+                onClick={onClearHistory}
+                disabled={simulating !== null}
+              >
+                <Trash2 size={13} />
+                Clear History
+              </button>
+            )}
+
+            <span className="count-badge">{filteredHistory.length}</span>
+          </div>
+        </div>
+
+        {filteredHistory.length === 0 ? (
+          <div className="incident-empty-state compact">
+            <p>No historical incidents found.</p>
+          </div>
+        ) : (
+          <div className="table-wrapper incident-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Source IP</th>
+                  <th>Threat</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Events</th>
+                  <th>Confidence</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredHistory.map((alert) => (
+                  <tr
+                    key={alert.alert_id}
+                    className={
+                      selectedIncident?.alert_id === alert.alert_id
+                        ? "incident-row selected"
+                        : "incident-row"
+                    }
+                    onClick={() => setSelectedIncident(alert)}
+                    title="Click to investigate this incident"
+                  >
+                    <td className="incident-id">#{alert.alert_id}</td>
+
+                    <td className="source">{alert.source_ip}</td>
+
+                    <td>
+                      <strong>{formatAttackType(alert.attack_type)}</strong>
+                    </td>
+
+                    <td>
+                      <SeverityBadge severity={alert.severity} />
+                    </td>
+
+                    <td>
+                      <StatusBadge status={alert.status} />
+                    </td>
+
+                    <td>{alert.event_count}</td>
+
+                    <td>
+                      <div className="confidence-cell">
+                        <div className="confidence-mini-bar">
+                          <div
+                            style={{
+                              width: `${Math.round(
+                                (alert.confidence || 0) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+
+                        <span>
+                          {Math.round((alert.confidence || 0) * 100)}%
+                        </span>
+                      </div>
+                    </td>
+
+                    <td>
+                      {alert.duration
+                        ? `${alert.duration.toFixed(1)}s`
+                        : "< 1s"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {selectedIncident && (
+        <IncidentDrawer
+          alert={selectedIncident}
+          onClose={() => setSelectedIncident(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function IncidentDrawer({ alert, onClose }) {
+  const confidence = Math.round((alert.confidence || 0) * 100);
+
+  const formatTimestamp = (timestamp) =>
+    timestamp
+      ? new Date(timestamp * 1000).toLocaleString()
+      : "—";
+
+  return (
+    <div className="incident-drawer-backdrop" onClick={onClose}>
+      <aside
+        className="incident-drawer"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="incident-drawer-header">
+          <div>
+            <span>INCIDENT #{alert.alert_id}</span>
+            <h3>{formatAttackType(alert.attack_type)}</h3>
+          </div>
+
+          <button
+            className="incident-drawer-close"
+            onClick={onClose}
+            aria-label="Close incident details"
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="incident-drawer-badges">
+          <SeverityBadge severity={alert.severity} />
+          <StatusBadge status={alert.status} />
+          <span className="incident-confidence-badge">
+            {confidence}% confidence
+          </span>
+        </div>
+
+        <div className="incident-drawer-section">
+          <div className="incident-drawer-section-title">
+            <span>Incident Overview</span>
+          </div>
+
+          <div className="incident-detail-grid">
+            <div>
+              <span>Source IP</span>
+              <strong className="incident-mono">{alert.source_ip}</strong>
+            </div>
+
+            <div>
+              <span>Threat Class</span>
+              <strong>{formatAttackType(alert.attack_type)}</strong>
+            </div>
+
+            <div>
+              <span>Observed Events</span>
+              <strong>{alert.event_count}</strong>
+            </div>
+
+            <div>
+              <span>Duration</span>
+              <strong>
+                {alert.duration > 0
+                  ? `${alert.duration.toFixed(1)}s`
+                  : "< 1s"}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="incident-drawer-section">
+          <div className="incident-drawer-section-title">
+            <span>Detection Confidence</span>
+            <strong>{confidence}%</strong>
+          </div>
+
+          <div className="incident-confidence-track">
+            <div
+              className="incident-confidence-fill"
+              style={{ width: `${confidence}%` }}
+            />
+          </div>
+
+          <p className="incident-drawer-muted">
+            Confidence reported by the active MONI detection engine.
+          </p>
+        </div>
+
+        <div className="incident-drawer-section">
+          <div className="incident-drawer-section-title">
+            <span>Supporting Evidence</span>
+          </div>
+
+          {alert.reasons && alert.reasons.length > 0 ? (
+            <ul className="incident-evidence-list">
+              {alert.reasons.map((reason, index) => (
+                <li key={index}>
+                  <CheckCircle2 size={14} />
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="incident-drawer-muted">
+              No supporting evidence was recorded for this incident.
+            </p>
+          )}
+        </div>
+
+        <div className="incident-drawer-section">
+          <div className="incident-drawer-section-title">
+            <span>Incident Timeline</span>
+          </div>
+
+          <div className="incident-timeline">
+            <div className="incident-timeline-item">
+              <span className="incident-timeline-dot" />
+              <div>
+                <strong>First Observed</strong>
+                <span>{formatTimestamp(alert.first_seen)}</span>
+              </div>
+            </div>
+
+            <div className="incident-timeline-item">
+              <span className="incident-timeline-dot" />
+              <div>
+                <strong>Last Seen</strong>
+                <span>{formatTimestamp(alert.last_seen)}</span>
+              </div>
+            </div>
+
+            {alert.resolved_at && (
+              <div className="incident-timeline-item resolved">
+                <span className="incident-timeline-dot" />
+                <div>
+                  <strong>Resolved</strong>
+                  <span>{formatTimestamp(alert.resolved_at)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="incident-drawer-footer">
+          <span>Detection-only monitoring</span>
+          <span>No network response or blocking performed</span>
+        </div>
+      </aside>
     </div>
   );
 }

@@ -114,39 +114,79 @@ def _try_load():
 def _explain(vector, stats):
     """
     Turn the raw feature vector into a short list of
-    human-readable "which features looked unusual" reasons,
-    using the z-score (how many standard deviations away
-    from the normal-training mean) of each feature.
+    human-readable reasons.
+
+    For stable baseline features, use z-score to measure
+    how unusual the value is. For near-constant baseline
+    features, avoid meaningless enormous z-scores and
+    report the observed value relative to the benign
+    baseline instead.
     """
 
     deviations = []
+
+    # A standard deviation below this value means the
+    # benign training data was effectively constant for
+    # that feature. In that case, a z-score would be
+    # numerically huge but not useful to an analyst.
+    STD_EPSILON = 1e-4
 
     for name, value in zip(FEATURE_NAMES, vector):
 
         mean = stats[name]["mean"]
         std = stats[name]["std"]
 
-        z_score = (value - mean) / std
+        if std < STD_EPSILON:
+            # Preserve the direction and magnitude of the
+            # deviation without producing misleading z-scores.
+            deviation = abs(value - mean)
 
-        deviations.append((name, value, z_score))
+            if deviation > 0:
+                deviations.append(
+                    (name, value, None, mean, deviation)
+                )
+        else:
+            z_score = (value - mean) / std
+            deviations.append(
+                (name, value, z_score, mean, abs(value - mean))
+            )
 
-    # Sort by how extreme the deviation is, largest first.
-    deviations.sort(key=lambda item: abs(item[2]), reverse=True)
+    # Sort stable z-score features by z-score magnitude.
+    # Near-constant features are sorted by absolute deviation.
+    deviations.sort(
+        key=lambda item: (
+            abs(item[2]) if item[2] is not None
+            else item[4]
+        ),
+        reverse=True,
+    )
 
     reasons = []
 
-    for name, value, z_score in deviations[:3]:
+    for name, value, z_score, mean, deviation in deviations[:3]:
 
-        if abs(z_score) < 1.5:
-            # Not really unusual enough to mention.
-            continue
+        if z_score is not None:
 
-        direction = "higher" if z_score > 0 else "lower"
+            if abs(z_score) < 1.5:
+                continue
 
-        reasons.append(
-            f"{name} unusually {direction} than normal "
-            f"(value={value:.2f}, z-score={z_score:.1f})"
-        )
+            direction = "higher" if z_score > 0 else "lower"
+
+            reasons.append(
+                f"{name} unusually {direction} than normal "
+                f"(value={value:.2f}, z-score={z_score:.1f})"
+            )
+
+        else:
+            # Near-constant baseline: explain the actual
+            # deviation instead of exposing an enormous
+            # meaningless z-score.
+            direction = "higher" if value > mean else "lower"
+
+            reasons.append(
+                f"{name} deviates strongly from normal baseline "
+                f"(value={value:.2f}, baseline={mean:.2f})"
+            )
 
     return reasons
 
