@@ -49,17 +49,32 @@ def detect_exfiltration(features: Dict) -> DetectionResult:
     reasons = []
     score = 0
 
-    bytes_sent = features.get("bytes", 0)
-    bytes_received = features.get("bytes_received", 0)
-
-    outbound_inbound_ratio = features.get(
-        "outbound_inbound_ratio", 0.0
+    # Prefer the dedicated 10-second rolling features
+    # for exfiltration detection. Fall back to the
+    # current-window features for standalone tests.
+    bytes_sent = features.get(
+        "exfil_bytes_sent",
+        features.get("bytes", 0)
     )
 
-    packets = features.get("packets", 0)
+    bytes_received = features.get(
+        "exfil_bytes_received",
+        features.get("bytes_received", 0)
+    )
+
+    outbound_inbound_ratio = features.get(
+        "exfil_outbound_inbound_ratio",
+        features.get("outbound_inbound_ratio", 0.0)
+    )
+
+    packets = features.get(
+        "exfil_packets",
+        features.get("packets", 0)
+    )
 
     bytes_per_second = features.get(
-        "bytes_per_second", 0.0
+        "exfil_bytes_per_second",
+        features.get("bytes_per_second", 0.0)
     )
 
     # -----------------------------------------------------

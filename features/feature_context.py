@@ -85,6 +85,28 @@ class FeatureContext:
         combined = dict(current)
 
         behavior = self.behavior.get(source_ip, {})
+
+        # Explicit rolling-window features for data exfiltration.
+        # Keep these separate from the common "bytes" fields so
+        # other detectors continue using the current-window values.
+        if behavior:
+            combined["exfil_bytes_sent"] = behavior.get(
+                "bytes", 0
+            )
+            combined["exfil_bytes_received"] = behavior.get(
+                "bytes_received", 0
+            )
+            combined["exfil_outbound_inbound_ratio"] = behavior.get(
+                "outbound_inbound_ratio", 1.0
+            )
+            combined["exfil_packets"] = behavior.get(
+                "packets", 0
+            )
+            combined["exfil_bytes_per_second"] = behavior.get(
+                "bytes_per_second", 0.0
+            )
+
+
         for key, value in behavior.items():
             if key not in combined:
                 combined[key] = value
