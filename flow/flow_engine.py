@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 from collector.packet_record import PacketRecord
 
@@ -23,6 +23,12 @@ class Flow:
 
     forward_bytes: int = 0
     backward_bytes: int = 0
+
+    # TCP communication-role inference.
+    # These are intentionally separate from src_ip/dst_ip,
+    # which represent the first observed flow direction.
+    initiator_ip: Optional[str] = None
+    responder_ip: Optional[str] = None
 
     def duration(self) -> float:
         return self.last_seen - self.start_time
@@ -107,6 +113,23 @@ class FlowEngine:
             flow = self.flows[key]
 
         flow.last_seen = packet.timestamp
+
+        # Infer TCP communication roles from handshake metadata.
+        # SYN without ACK identifies the connection initiator.
+        # SYN+ACK identifies the responder.
+        # We do not guess roles for non-TCP traffic.
+        if packet.protocol == "TCP" and packet.tcp_flags:
+            flags = packet.tcp_flags
+
+            if "S" in flags and "A" not in flags:
+                flow.initiator_ip = packet.src_ip
+                flow.responder_ip = packet.dst_ip
+
+            elif "S" in flags and "A" in flags:
+                if flow.initiator_ip is None:
+                    flow.initiator_ip = packet.dst_ip
+                if flow.responder_ip is None:
+                    flow.responder_ip = packet.src_ip
 
         flow.packets += 1
         flow.bytes += packet.packet_length

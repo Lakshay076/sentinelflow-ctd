@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List
 
 
 @dataclass
@@ -36,6 +36,12 @@ class FeatureContext:
         STAGE 4 ADDITION.
         Per-source TLS ClientHello metadata features
         (used for encrypted-session anomaly detection).
+
+    communication:
+        Flow-level communication relationships observed
+        during the current detection window. This context
+        is kept separate from numeric ML features and is
+        used for alert enrichment and correlation.
     """
 
     network: Dict
@@ -45,6 +51,35 @@ class FeatureContext:
     beacon: Dict[str, Dict] = field(default_factory=dict)
     dns: Dict[str, Dict] = field(default_factory=dict)
     tls: Dict[str, Dict] = field(default_factory=dict)
+    communication: List[Dict] = field(default_factory=list)
+
+    def get_communications(self) -> List[Dict]:
+        """
+        Return flow-level communication relationships
+        observed during the current detection window.
+        """
+
+        return self.communication
+
+    def get_source_communications(
+        self,
+        source_ip: str,
+    ) -> List[Dict]:
+        """
+        Return communication relationships involving
+        a particular IP address.
+        """
+
+        return [
+            communication
+            for communication in self.communication
+            if (
+                communication.get("src_ip") == source_ip
+                or communication.get("dst_ip") == source_ip
+                or communication.get("initiator_ip") == source_ip
+                or communication.get("responder_ip") == source_ip
+            )
+        ]
 
     def get_source_features(
         self,

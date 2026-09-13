@@ -85,6 +85,9 @@ class AlertStore:
         confidence: float,
         timestamp: float,
         reasons: List[str],
+        initiator_ip: Optional[str] = None,
+        responder_ips: Optional[List[str]] = None,
+        related_flows: Optional[List[dict]] = None,
     ) -> AlertRecord:
         if self.use_postgres:
             try:
@@ -92,9 +95,13 @@ class AlertStore:
                 query = """
                 INSERT INTO alerts (
                     source_ip, attack_type, severity, confidence,
-                    first_seen, last_seen, status, event_count, reasons
+                    first_seen, last_seen, status, event_count, reasons,
+                    initiator_ip, responder_ips, related_flows
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, 'ACTIVE', 1, %s)
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, 'ACTIVE', 1, %s,
+                    %s, %s, %s
+                )
                 RETURNING alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -103,7 +110,16 @@ class AlertStore:
                             query,
                             (
                                 source_ip, attack_type, severity, confidence,
-                                timestamp, timestamp, psycopg.types.json.Jsonb(reasons),
+                                timestamp,
+                                timestamp,
+                                psycopg.types.json.Jsonb(reasons),
+                                initiator_ip,
+                                psycopg.types.json.Jsonb(
+                                    responder_ips or []
+                                ),
+                                psycopg.types.json.Jsonb(
+                                    related_flows or []
+                                ),
                             ),
                         )
                         alert_id = cursor.fetchone()[0]
@@ -120,6 +136,9 @@ class AlertStore:
                     status="ACTIVE",
                     event_count=1,
                     reasons=reasons,
+                    initiator_ip=initiator_ip,
+                    responder_ips=responder_ips or [],
+                    related_flows=related_flows or [],
                 )
             except Exception:
                 self.use_postgres = False
@@ -129,9 +148,10 @@ class AlertStore:
         query = """
         INSERT INTO alerts (
             source_ip, attack_type, severity, confidence,
-            first_seen, last_seen, status, event_count, reasons
+            first_seen, last_seen, status, event_count, reasons,
+            initiator_ip, responder_ips, related_flows
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, ?, ?)
         """
         with self._connect_sqlite() as conn:
             cursor = conn.cursor()
@@ -139,7 +159,12 @@ class AlertStore:
                 query,
                 (
                     source_ip, attack_type, severity, confidence,
-                    timestamp, timestamp, json.dumps(reasons),
+                    timestamp,
+                    timestamp,
+                    json.dumps(reasons),
+                    initiator_ip,
+                    json.dumps(responder_ips or []),
+                    json.dumps(related_flows or []),
                 ),
             )
             alert_id = cursor.lastrowid
@@ -163,7 +188,8 @@ class AlertStore:
             try:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
-                       first_seen, last_seen, resolved_at, status, event_count, reasons
+                       first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 FROM alerts WHERE alert_id = %s
                 """
                 with self._connect_postgres() as connection:
@@ -179,7 +205,8 @@ class AlertStore:
 
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
-               first_seen, last_seen, resolved_at, status, event_count, reasons
+               first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
         FROM alerts WHERE alert_id = ?
         """
         with self._connect_sqlite() as conn:
@@ -195,7 +222,8 @@ class AlertStore:
             try:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
-                       first_seen, last_seen, resolved_at, status, event_count, reasons
+                       first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 FROM alerts ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -209,7 +237,8 @@ class AlertStore:
 
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
-               first_seen, last_seen, resolved_at, status, event_count, reasons
+               first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
         FROM alerts ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -223,7 +252,8 @@ class AlertStore:
             try:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
-                       first_seen, last_seen, resolved_at, status, event_count, reasons
+                       first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 FROM alerts WHERE status = 'ACTIVE' ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -237,7 +267,8 @@ class AlertStore:
 
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
-               first_seen, last_seen, resolved_at, status, event_count, reasons
+               first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
         FROM alerts WHERE status = 'ACTIVE' ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -251,7 +282,8 @@ class AlertStore:
             try:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
-                       first_seen, last_seen, resolved_at, status, event_count, reasons
+                       first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 FROM alerts WHERE status = 'RESOLVED' ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -265,7 +297,8 @@ class AlertStore:
 
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
-               first_seen, last_seen, resolved_at, status, event_count, reasons
+               first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
         FROM alerts WHERE status = 'RESOLVED' ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -283,7 +316,8 @@ class AlertStore:
             try:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
-                       first_seen, last_seen, resolved_at, status, event_count, reasons
+                       first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 FROM alerts
                 WHERE source_ip = %s AND attack_type = %s AND status = 'ACTIVE'
                 ORDER BY alert_id LIMIT 1
@@ -301,7 +335,8 @@ class AlertStore:
 
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
-               first_seen, last_seen, resolved_at, status, event_count, reasons
+               first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
         FROM alerts
         WHERE source_ip = ? AND attack_type = ? AND status = 'ACTIVE'
         ORDER BY alert_id LIMIT 1
@@ -322,6 +357,9 @@ class AlertStore:
         confidence: float,
         event_count: int,
         reasons: List[str],
+        initiator_ip: Optional[str] = None,
+        responder_ips: Optional[List[str]] = None,
+        related_flows: Optional[List[dict]] = None,
     ) -> Optional[AlertRecord]:
         if self.use_postgres:
             try:
@@ -329,10 +367,14 @@ class AlertStore:
                 query = """
                 UPDATE alerts
                 SET last_seen = %s, severity = %s, confidence = %s,
-                    event_count = %s, reasons = %s, updated_at = CURRENT_TIMESTAMP
+                    event_count = %s, reasons = %s,
+                    initiator_ip = %s, responder_ips = %s,
+                    related_flows = %s,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE alert_id = %s
                 RETURNING alert_id, source_ip, attack_type, severity, confidence,
-                          first_seen, last_seen, resolved_at, status, event_count, reasons
+                          first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 """
                 with self._connect_postgres() as connection:
                     with connection.cursor() as cursor:
@@ -340,7 +382,16 @@ class AlertStore:
                             query,
                             (
                                 timestamp, severity, confidence,
-                                event_count, psycopg.types.json.Jsonb(reasons), alert_id,
+                                event_count,
+                                psycopg.types.json.Jsonb(reasons),
+                                initiator_ip,
+                                psycopg.types.json.Jsonb(
+                                    responder_ips or []
+                                ),
+                                psycopg.types.json.Jsonb(
+                                    related_flows or []
+                                ),
+                                alert_id,
                             ),
                         )
                         row = cursor.fetchone()
@@ -355,7 +406,9 @@ class AlertStore:
         query = """
         UPDATE alerts
         SET last_seen = ?, severity = ?, confidence = ?,
-            event_count = ?, reasons = ?, updated_at = CURRENT_TIMESTAMP
+            event_count = ?, reasons = ?,
+            initiator_ip = ?, responder_ips = ?, related_flows = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE alert_id = ?
         """
         with self._connect_sqlite() as conn:
@@ -363,8 +416,15 @@ class AlertStore:
             cursor.execute(
                 query,
                 (
-                    timestamp, severity, confidence,
-                    event_count, json.dumps(reasons), alert_id,
+                    timestamp,
+                    severity,
+                    confidence,
+                    event_count,
+                    json.dumps(reasons),
+                    initiator_ip,
+                    json.dumps(responder_ips or []),
+                    json.dumps(related_flows or []),
+                    alert_id,
                 ),
             )
             conn.commit()
@@ -383,7 +443,8 @@ class AlertStore:
                 SET status = 'RESOLVED', resolved_at = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE alert_id = %s
                 RETURNING alert_id, source_ip, attack_type, severity, confidence,
-                          first_seen, last_seen, resolved_at, status, event_count, reasons
+                          first_seen, last_seen, resolved_at, status, event_count, reasons,
+                       initiator_ip, responder_ips, related_flows
                 """
                 with self._connect_postgres() as connection:
                     with connection.cursor() as cursor:
@@ -482,5 +543,28 @@ class AlertStore:
             status=row[8],
             event_count=row[9],
             reasons=parsed_reasons,
+            initiator_ip=(
+                str(row[11])
+                if row[11] is not None
+                else None
+            ),
+            responder_ips=(
+                row[12]
+                if isinstance(row[12], list)
+                else (
+                    json.loads(row[12])
+                    if isinstance(row[12], str)
+                    else []
+                )
+            ),
+            related_flows=(
+                row[13]
+                if isinstance(row[13], list)
+                else (
+                    json.loads(row[13])
+                    if isinstance(row[13], str)
+                    else []
+                )
+            ),
         )
 

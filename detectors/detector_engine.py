@@ -155,6 +155,46 @@ class DetectorEngine:
         return results
 
     # =================================================
+    # COMMUNICATION CONTEXT
+    # =================================================
+
+    def get_communication_context(
+        self,
+        context: FeatureContext,
+    ) -> Dict[str, Dict]:
+        """Return observed communication relationships by source.
+
+        This is enrichment only. It does not affect detector
+        thresholds, scores, confidence, or ML sensitivity.
+        """
+
+        from detectors.correlation import (
+            get_source_relationships,
+        )
+
+        communications = context.get_communications()
+
+        # Start with the same source population used by
+        # the detector pipeline. Communication context is
+        # enrichment only and must not create new ML sources.
+        source_ips = set(context.source_ips())
+
+        # Communication records may contain useful relationship
+        # information for an already-observed source. Add only
+        # endpoints that are already represented in the context's
+        # source-level feature population.
+        result = {}
+
+        for source_ip in source_ips:
+
+            result[source_ip] = get_source_relationships(
+                source_ip,
+                communications,
+            )
+
+        return result
+
+    # =================================================
     # COMPLETE CONTEXT ANALYSIS
     # =================================================
 

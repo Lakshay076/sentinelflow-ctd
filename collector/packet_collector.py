@@ -6,7 +6,9 @@ from features.window import WindowManager
 from features.security_features import calculate_security_features
 from features.source_aggregation import SourceAggregator
 from features.feature_context import FeatureContext
+from features.communication_context import CommunicationContext
 from detectors.detector_engine import DetectorEngine
+from detectors.incident_correlator import IncidentCorrelator
 from features.behavior_window import BehaviorWindow
 from alerts.alert_manager import AlertManager
 from telemetry.live_metrics import live_metrics
@@ -31,12 +33,14 @@ flow_engine = FlowEngine(timeout=60)
 # A completed feature vector is produced every 1 second.
 window_manager = WindowManager(window_seconds=1.0)
 source_aggregator = SourceAggregator()
+communication_context = CommunicationContext()
 
 # use_ml=True will use the trained ML model if one exists
 # (inference/model.joblib). If it doesn't exist yet, the ML
 # detector safely does nothing until you run:
 #   python -m inference.train_model
 detector_engine = DetectorEngine(use_ml=True)
+incident_correlator = IncidentCorrelator()
 
 behavior_window = BehaviorWindow(
     window_seconds=10.0
@@ -60,8 +64,14 @@ tls_tracker = TLSTracker(window_seconds=300.0)
 pipeline_lock = threading.Lock()
 
 
-def evaluate_window(window_features, source_features, timestamp):
+def evaluate_window(
+    window_features,
+    source_features,
+    timestamp,
+    communication_features=None,
+):
     security_features = calculate_security_features(window_features)
+    communication_features = communication_features or []
     live_metrics.add_window(
         features=window_features,
         source_features=source_features,
@@ -81,14 +91,25 @@ def evaluate_window(window_features, source_features, timestamp):
         beacon=beacon_features,
         dns=dns_features,
         tls=tls_features,
+        communication=communication_features,
     )
 
     detections = detector_engine.analyze_context(context)
+    communication_context = detector_engine.get_communication_context(context)
+
+    # Correlate raw detector signals into operator-facing incidents.
+    # Detector thresholds, scores, and ML sensitivity remain unchanged.
+    detections = incident_correlator.correlate(
+        detections=detections,
+        communication_context=communication_context,
+    )
+
     for source_ip, results in detections.items():
         alert_manager.process(
             source_ip=source_ip,
             detections=results,
             timestamp=timestamp,
+            communication_context=communication_context.get(source_ip),
         )
 
     resolved_alerts = alert_manager.resolve_stale(timestamp=timestamp)
@@ -288,20 +309,34 @@ def process_packet(packet):
             **packet_data,
         )
 
+
         if window_features:
+            # The current packet belongs to the NEW window.
+            # Evaluate the completed window using its own
+            # communication relationships before adding this
+            # boundary packet to the new context.
+
             source_features = source_aggregator.get_features(
                 window_features["window_duration"]
             )
 
+            communication_features = (
+                communication_context.snapshot()
+            )
+
             source_aggregator.reset()
+            communication_context.reset()
 
             evaluate_window(
                 window_features,
                 source_features,
                 timestamp,
+                communication_features,
             )
 
+        # This packet belongs to the current/new window.
         source_aggregator.add_packet(**packet_data)
+        communication_context.record(flow, record)
 
         behavior_window.add_packet(
             timestamp=timestamp,
@@ -330,12 +365,18 @@ def background_flusher():
                     features["window_duration"]
                 )
 
+                communication_features = (
+                    communication_context.snapshot()
+                )
+
                 source_aggregator.reset()
+                communication_context.reset()
 
                 evaluate_window(
                     features,
                     source_features,
                     now,
+                    communication_features,
                 )
 
 def main():

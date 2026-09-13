@@ -28,6 +28,19 @@ class AlertRecord:
 
     reasons: List[str] = field(default_factory=list)
 
+    # Communication enrichment.
+    # These fields describe observed relationships only.
+    # They do not imply that CTD performed any network action.
+    initiator_ip: Optional[str] = None
+
+    responder_ips: List[str] = field(
+        default_factory=list
+    )
+
+    related_flows: List[dict] = field(
+        default_factory=list
+    )
+
     resolved_at: Optional[float] = None
 
     def duration(self) -> float:
@@ -94,4 +107,7 @@ class AlertRecord:
             "event_count": self.event_count,
             "duration": self.duration(),
             "reasons": self.reasons,
+            "initiator_ip": self.initiator_ip,
+            "responder_ips": self.responder_ips,
+            "related_flows": self.related_flows,
         }
