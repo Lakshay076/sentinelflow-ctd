@@ -102,6 +102,7 @@ def evaluate_window(
     detections = incident_correlator.correlate(
         detections=detections,
         communication_context=communication_context,
+        source_features=source_features,
     )
 
     for source_ip, results in detections.items():

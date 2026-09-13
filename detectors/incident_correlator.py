@@ -66,6 +66,7 @@ class IncidentCorrelator:
         self,
         detections: Dict[str, List[DetectionResult]],
         communication_context: Dict[str, Dict],
+        source_features: Dict[str, Dict] = None,
     ) -> Dict[str, List[DetectionResult]]:
         """
         Correlate source-level detections.
@@ -121,6 +122,81 @@ class IncidentCorrelator:
             ]
 
             output = list(non_ml_results)
+
+            # ---------------------------------------------------------
+            # Overlapping scan + SYN activity
+            #
+            # Keep both detectors fully sensitive. When a source has
+            # an extremely strong multi-port reconnaissance pattern,
+            # fold the SYN_FLOOD signal into the PORT_SCAN incident
+            # as supporting evidence instead of presenting two
+            # independent operator-facing incidents.
+            #
+            # Detector thresholds and raw results are unchanged.
+            # ---------------------------------------------------------
+
+            source = (source_features or {}).get(
+                source_ip,
+                {},
+            )
+
+            unique_ports = source.get(
+                "unique_destination_ports",
+                0,
+            )
+
+            ports_per_destination = source.get(
+                "ports_per_destination",
+                0.0,
+            )
+
+            unique_destinations = source.get(
+                "unique_destinations",
+                0,
+            )
+
+            scan_results = [
+                result
+                for result in known_results
+                if result.attack_type == "PORT_SCAN"
+            ]
+
+            syn_results = [
+                result
+                for result in known_results
+                if result.attack_type == "SYN_FLOOD"
+            ]
+
+            # Strong multi-port reconnaissance context.
+            # This is intentionally contextual rather than a detector
+            # threshold: the SYN detector itself remains unchanged.
+            strong_scan_context = (
+                bool(scan_results)
+                and bool(syn_results)
+                and unique_ports >= 10
+                and ports_per_destination >= 5.0
+                and unique_destinations >= 1
+            )
+
+            if strong_scan_context:
+
+                supporting_reasons = [
+                    "SYN activity correlated with "
+                    "multi-port reconnaissance",
+                    f"SYN flood detector signal observed across "
+                    f"{unique_ports} destination ports",
+                ]
+
+                output = [
+                    self._copy_detection(
+                        result,
+                        supporting_reasons,
+                    )
+                    if result.attack_type == "PORT_SCAN"
+                    else result
+                    for result in output
+                    if result.attack_type != "SYN_FLOOD"
+                ]
 
             # Same-source ML corroboration.
             if known_results and ml_results:
