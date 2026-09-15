@@ -1,0 +1,94 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+svg {
+  display: block;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ==========================================================================
+   Custom Native Cursor
+   ========================================================================== */
+@media (hover: hover) and (pointer: fine) {
+  /* Light Theme - Default */
+  body {
+    cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3 L3 19 L8 14 L15 14 Z' fill='%23211B18' stroke='%23F7F2EA' stroke-width='2' stroke-linejoin='round' /%3E%3C/svg%3E") 3 3, auto;
+  }
+
+  /* Light Theme - Interactive */
+  a, button, [role="button"], select, .interactive,
+  .sidebar-brand, .sidebar-nav-item, .demo-vector-btn, .refresh-button, .theme-toggle {
+    cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3 L3 19 L8 14 L15 14 Z' fill='%235B63D3' stroke='%23F7F2EA' stroke-width='2' stroke-linejoin='round' /%3E%3C/svg%3E") 3 3, pointer;
+  }
+
+  /* Dark Theme - Default */
+  [data-theme="dark"] body, [data-theme="dark"] .app-shell {
+    cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3 L3 19 L8 14 L15 14 Z' fill='%23F5F1EC' stroke='%23121214' stroke-width='2' stroke-linejoin='round' /%3E%3C/svg%3E") 3 3, auto;
+  }
+
+  /* Dark Theme - Interactive */
+  [data-theme="dark"] a, 
+  [data-theme="dark"] button, 
+  [data-theme="dark"] [role="button"], 
+  [data-theme="dark"] select, 
+  [data-theme="dark"] .interactive,
+  [data-theme="dark"] .sidebar-brand, 
+  [data-theme="dark"] .sidebar-nav-item, 
+  [data-theme="dark"] .demo-vector-btn, 
+  [data-theme="dark"] .refresh-button, 
+  [data-theme="dark"] .theme-toggle {
+    cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3 L3 19 L8 14 L15 14 Z' fill='%236D75E8' stroke='%23121214' stroke-width='2' stroke-linejoin='round' /%3E%3C/svg%3E") 3 3, pointer;
+  }
+
+  /* Exclude text inputs to keep native text selection cursor */
+  input, textarea, [contenteditable="true"] {
+    cursor: text;
+  }
+}

@@ -1,0 +1,124 @@
+/* ==========================================================================
+   Shared Motion & Microinteractions
+   MONI Network Intelligence Motion System
+   ========================================================================== */
+
+:root {
+  --motion-duration-instant: 0.1s;
+  --motion-duration-fast: 0.18s;
+  --motion-duration-base: 0.28s;
+  --motion-duration-slow: 0.45s;
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Shared Transitions */
+.transition-all {
+  transition: all var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.transition-colors {
+  transition: background-color var(--motion-duration-base) var(--motion-ease-out),
+              border-color var(--motion-duration-base) var(--motion-ease-out),
+              color var(--motion-duration-base) var(--motion-ease-out),
+              box-shadow var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.transition-transform {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.transition-fade {
+  transition: opacity var(--motion-duration-base) var(--motion-ease-out);
+}
+
+/* Microinteraction Helpers */
+.interactive-hover {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out),
+              border-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.interactive-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.interactive-press:active {
+  transform: scale(0.98);
+}
+
+.interactive-glow:hover {
+  box-shadow: 0 0 14px var(--accent-soft);
+}
+
+/* Shared Keyframe Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--motion-duration-base) var(--motion-ease-out) forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp var(--motion-duration-slow) var(--motion-ease-out) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   Reduced Motion Support (WCAG 2.2 Requirement)
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spin-slow,
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-pulse-subtle {
+    animation: none !important;
+  }
+
+  .interactive-hover:hover,
+  .interactive-press:active,
+  .stat-card:hover,
+  .detector-card:hover {
+    transform: none !important;
+  }
+}

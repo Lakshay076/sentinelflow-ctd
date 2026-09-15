@@ -1,0 +1,169 @@
+/* ==========================================================================
+   Shared Chart Styles
+   MONI Network Intelligence & Threat Detection Visualizations
+   ========================================================================== */
+
+/* Chart Container & Cards */
+.chart-container {
+  width: 100%;
+  position: relative;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chart-container:hover {
+  border-color: var(--border-medium);
+}
+
+.chart-responsive-wrapper {
+  width: 100%;
+  position: relative;
+  min-height: 220px;
+}
+
+/* Chart Header & Metadata */
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+}
+
+.chart-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.chart-header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.chart-header-value {
+  text-align: right;
+}
+
+.chart-header-value strong {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.chart-header-value span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Tooltip Surface */
+.chart-tooltip {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 50;
+  backdrop-filter: blur(8px);
+}
+
+.chart-tooltip-header {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.chart-tooltip-body {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.chart-tooltip-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* Legend */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: var(--space-3);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Axis & Label Helpers */
+.chart-axis-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.chart-axis-tick {
+  font-size: 11px;
+  fill: var(--text-muted);
+}
+
+.chart-grid-line {
+  stroke: var(--border-subtle);
+  stroke-dasharray: 3 3;
+}
+
+/* Empty State Helper */
+.chart-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 13px;
+  gap: var(--space-2);
+}
+
+/* Responsive Overrides */
+@media (max-width: 768px) {
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chart-header-value {
+    text-align: left;
+  }
+}

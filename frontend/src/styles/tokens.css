@@ -1,0 +1,131 @@
+/* ==========================================================================
+   Design Tokens
+   MONI - Monitoring Network Intelligence / Cyber Threat Detection
+   Warm Editorial Light Theme & Precision Graphite Dark Theme
+   ========================================================================== */
+
+:root {
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Surfaces & Backgrounds - Warm Editorial Light */
+  --bg-primary: #F7F2EA;
+  --bg-secondary: #F2ECE3;
+  --surface-card: #FFFDF9;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #EFE8DE;
+  --sidebar-bg: #FAF6F0;
+  --topbar-bg: rgba(247, 242, 234, 0.88);
+
+  /* Borders */
+  --border: #E5DDD2;
+  --border-subtle: #E5DDD2;
+  --border-medium: #D8CEBF;
+  --border-focus: #5B63D3;
+
+  /* Typography Colors */
+  --text-primary: #211B18;
+  --text-secondary: #6F655D;
+  --text-muted: #8E8378;
+  --text-on-dark: #FFFFFF;
+
+  /* MONI Brand Accents */
+  --accent-primary: #5B63D3;
+  --accent-secondary: #8B5CF6;
+  --accent-soft: #ECEBFF;
+  --accent-tint: rgba(91, 99, 211, 0.04);
+
+  /* Legacy Brand Aliases */
+  --brand-magenta: #5B63D3;
+  --brand-violet: #8B5CF6;
+  --brand-gradient: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+
+  /* Semantic Colors - Restrained & Sophisticated */
+  --status-healthy: #15803d;
+  --status-healthy-bg: #E8F5EB;
+  --severity-medium: #b45309;
+  --severity-medium-bg: #FEF3E2;
+  --severity-critical: #b91c1c;
+  --severity-critical-bg: #FDF0F0;
+  --severity-high: #c2410c;
+  --severity-high-bg: #FEF0E6;
+  --severity-low: #3b82f6;
+  --severity-low-bg: #EEF2FF;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(33, 27, 24, 0.05);
+  --shadow-md: 0 4px 14px 0 rgba(33, 27, 24, 0.06), 0 1px 3px 0 rgba(33, 27, 24, 0.03);
+  --shadow-lg: 0 10px 28px -4px rgba(33, 27, 24, 0.08), 0 4px 8px -2px rgba(33, 27, 24, 0.03);
+  --shadow-glow-accent: 0 0 16px rgba(91, 99, 211, 0.18);
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+/* ==========================================================================
+   Dark Theme Context - Precision Graphite with MONI Accents
+   ========================================================================== */
+[data-theme="dark"] {
+  /* Surfaces & Backgrounds */
+  --bg-primary: #121214;
+  --bg-secondary: #18181B;
+  --surface-card: #1C1C20;
+  --surface-elevated: #232329;
+  --surface-hover: #26262D;
+  --sidebar-bg: #141417;
+  --topbar-bg: rgba(18, 18, 20, 0.90);
+
+  /* Borders */
+  --border: #303037;
+  --border-subtle: #2B2B32;
+  --border-medium: #3E3E48;
+  --border-focus: rgba(139, 92, 246, 0.5);
+
+  /* Typography Colors */
+  --text-primary: #F5F1EC;
+  --text-secondary: #B8B0A8;
+  --text-muted: #817A74;
+  --text-on-dark: #FFFFFF;
+
+  /* MONI Brand Accents */
+  --accent-primary: #6D75E8;
+  --accent-secondary: #9D7BFA;
+  --accent-soft: rgba(91, 99, 211, 0.18);
+  --accent-tint: rgba(91, 99, 211, 0.05);
+
+  /* Legacy Brand Aliases */
+  --brand-magenta: #6D75E8;
+  --brand-violet: #9D7BFA;
+  --brand-gradient: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+
+  /* Semantic Highlights for Dark Mode */
+  --status-healthy: #22c55e;
+  --status-healthy-bg: rgba(34, 197, 94, 0.12);
+  --severity-medium: #f59e0b;
+  --severity-medium-bg: rgba(245, 158, 11, 0.12);
+  --severity-critical: #ef4444;
+  --severity-critical-bg: rgba(239, 68, 68, 0.14);
+  --severity-high: #f97316;
+  --severity-high-bg: rgba(249, 115, 22, 0.12);
+  --severity-low: #60a5fa;
+  --severity-low-bg: rgba(96, 165, 250, 0.12);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-glow-accent: 0 0 20px rgba(109, 117, 232, 0.25);
+}
