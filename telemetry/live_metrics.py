@@ -27,6 +27,46 @@ class LiveMetricsStore:
             "DATABASE_URL",
             DB_FALLBACK_URL,
         )
+        
+        print(
+            f"[LiveMetrics] DATABASE_URL configured: "
+            f"{bool(self.database_url)}, "
+            f"scheme: {self.database_url.split(':', 1)[0] if self.database_url else 'NONE'}",
+            flush=True,
+        )
+        
+        self._init_table()
+
+    def _init_table(self):
+        try:
+            with self._connect() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS live_metrics (
+                            id SERIAL PRIMARY KEY,
+                            timestamp DOUBLE PRECISION NOT NULL,
+                            window_duration DOUBLE PRECISION,
+                            packets INTEGER,
+                            bytes INTEGER,
+                            packets_per_second DOUBLE PRECISION,
+                            bytes_per_second DOUBLE PRECISION,
+                            mbps DOUBLE PRECISION,
+                            flows_per_second DOUBLE PRECISION,
+                            active_flows INTEGER,
+                            unique_sources INTEGER,
+                            unique_destinations INTEGER,
+                            tcp_packets INTEGER,
+                            udp_packets INTEGER,
+                            icmp_packets INTEGER,
+                            tcp_syn INTEGER,
+                            tcp_ack INTEGER,
+                            tcp_rst INTEGER
+                        );
+                    """)
+                connection.commit()
+            print("[LiveMetrics] PostgreSQL schema initialized successfully", flush=True)
+        except Exception as exc:
+            print(f"[LIVE METRICS] Table init failed: {exc}", flush=True)
 
     def _connect(self):
         import psycopg
