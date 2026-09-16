@@ -32,6 +32,14 @@ class AlertStore:
         load_dotenv()
 
         self.database_url = os.getenv("DATABASE_URL")
+
+        print(
+            f"[AlertStore] DATABASE_URL configured: "
+            f"{bool(self.database_url)}, "
+            f"scheme: {self.database_url.split(':', 1)[0] if self.database_url else 'NONE'}",
+            flush=True,
+        )
+
         self.use_postgres = False
 
         if self.database_url and "YOUR_PASSWORD" not in self.database_url:
