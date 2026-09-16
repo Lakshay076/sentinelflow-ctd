@@ -40,8 +40,10 @@ class AlertStore:
                 conn = psycopg.connect(self.database_url, connect_timeout=1)
                 conn.close()
                 self.use_postgres = True
-            except Exception:
+            except Exception as e:
+                print(f"[AlertStore] PostgreSQL connection failed: {type(e).__name__}: {e}", flush=True)
                 self.use_postgres = False
+
 
         if not self.use_postgres:
             self._init_sqlite()
