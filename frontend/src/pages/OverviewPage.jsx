@@ -21,7 +21,7 @@ const itemVariants = {
 export function OverviewPage({
   lastUpdated,
   stats,
-  benchmarkResult,
+  liveMetrics,
   activeAlerts,
   history,
   filterType,
@@ -30,7 +30,7 @@ export function OverviewPage({
   return (
     <div className="overview-page-wrapper">
       {/* SECTION 1: Base Neutral */}
-      <motion.section 
+      <motion.section
         className="overview-section section-base"
         initial={{ opacity: 0, y: 15 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -47,7 +47,7 @@ export function OverviewPage({
           </div>
         </div>
 
-        <motion.div 
+        <motion.div
           className="stats-grid"
           variants={containerVariants}
           initial="hidden"
@@ -76,22 +76,22 @@ export function OverviewPage({
             />
           </motion.div>
           <motion.div variants={itemVariants}>
-            <StatCard
-              icon={<Gauge size={22} />}
-              label="Throughput"
-              value={
-                benchmarkResult
-                  ? `${benchmarkResult.sustained_mbps.toFixed(2)} Mbps`
-                  : "Awaiting Ingest"
-              }
-              highlight={benchmarkResult != null}
-            />
+              <StatCard
+                icon={<Gauge size={22} />}
+                label="Throughput"
+                value={
+                  liveMetrics?.latest?.mbps != null
+                    ? `${liveMetrics.latest.mbps.toFixed(2)} Mbps`
+                    : "Awaiting Ingest"
+                }
+                highlight={liveMetrics?.latest?.mbps != null}
+              />
           </motion.div>
         </motion.div>
       </motion.section>
 
       {/* SECTION 2: Alternate Surface */}
-      <motion.section 
+      <motion.section
         className="overview-section section-alt detector-matrix-section"
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -104,7 +104,7 @@ export function OverviewPage({
             <p>Specialized heuristic engines & unsupervised AI model status</p>
           </div>
         </div>
-        <motion.div 
+        <motion.div
           className="detectors-grid"
           variants={containerVariants}
           initial="hidden"
@@ -161,7 +161,7 @@ export function OverviewPage({
       </motion.section>
 
       {/* SECTION 3: Threat Landscape */}
-      <motion.section 
+      <motion.section
         className="overview-section section-tint attack-summary"
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}

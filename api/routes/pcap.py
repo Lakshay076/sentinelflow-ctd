@@ -162,6 +162,8 @@ def replay_pcap_file(req: ReplayPcapRequest):
             "sustained_mbps": benchmark.get("sustained_mbps", 0.0),
             "flows_seen": benchmark.get("flows_seen", 0),
             "flow_rate": benchmark.get("flow_rate", 0.0),
+            "windows_evaluated": benchmark.get("windows_evaluated", 0),
+            "alert_events": benchmark.get("alert_events", 0),
             "last_run": time.time(),
         }
 

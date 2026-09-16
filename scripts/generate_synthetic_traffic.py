@@ -82,11 +82,12 @@ def build_port_scan(packets, start_ts):
     attacker = "10.0.0.50"
     target = random.choice(EXTERNAL_HOSTS)
     ts = start_ts
-    for port in range(20, 45):
+    scan_intervals = [0.01, 0.018, 0.012, 0.027, 0.009]
+    for i, port in enumerate(range(20, 45)):
         pkt = IP(src=attacker, dst=target) / TCP(
             sport=random.randint(40000, 60000), dport=port, flags="S"
         )
-        ts += 0.01
+        ts += scan_intervals[i % len(scan_intervals)]
         pkt.time = ts
         packets.append(pkt)
     return ts
@@ -97,11 +98,14 @@ def build_syn_flood(packets, start_ts):
     attacker = "10.0.0.51"
     target = random.choice(EXTERNAL_HOSTS)
     ts = start_ts
-    for _ in range(120):
+    flood_intervals = [0.004, 0.006, 0.003, 0.005, 0.004]
+    flood_sport = 51000
+
+    for i in range(120):
         pkt = IP(src=attacker, dst=target) / TCP(
-            sport=random.randint(1024, 65000), dport=80, flags="S"
+            sport=flood_sport, dport=80, flags="S"
         )
-        ts += 0.005  # ~200 SYNs/sec
+        ts += flood_intervals[i % len(flood_intervals)]
         pkt.time = ts
         packets.append(pkt)
     return ts
@@ -114,11 +118,14 @@ def build_exfiltration(packets, start_ts):
     ts = start_ts
     # 450 x 1400 bytes = ~630KB, comfortably over the 500KB /
     # asymmetric-ratio thresholds the exfiltration detector checks.
-    for _ in range(450):
+    exfil_intervals = [0.007, 0.013, 0.009, 0.018, 0.011]
+    exfil_sport = 52000
+
+    for i in range(450):
         pkt = IP(src=attacker, dst=target) / UDP(
-            sport=random.randint(1024, 65000), dport=9999
+            sport=exfil_sport, dport=9999
         ) / Raw(load=b"X" * 1400)
-        ts += 0.01
+        ts += exfil_intervals[i % len(exfil_intervals)]
         pkt.time = ts
         packets.append(pkt)
     return ts
@@ -170,11 +177,13 @@ def build_tls_metadata_anomaly(packets, start_ts):
         0x03, 0x03,                          # TLS 1.2
     ]) + b"\x00" * 32 + bytes([0x00]) + bytes([0x00, 0x02, 0x00, 0x2f]) + bytes([0x01, 0x00])
 
-    for _ in range(6):
+    tls_intervals = [0.3, 1.1, 0.5, 1.7, 0.8, 1.4]
+
+    for i in range(6):
         pkt = IP(src=attacker, dst=target) / TCP(
             sport=random.randint(40000, 60000), dport=443, flags="PA"
         ) / Raw(load=client_hello)
-        ts += 0.3
+        ts += tls_intervals[i]
         pkt.time = ts
         packets.append(pkt)
     return ts

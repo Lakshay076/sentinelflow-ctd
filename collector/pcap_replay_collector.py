@@ -74,13 +74,29 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
     packet_count = 0
     byte_count = 0
     prev_pkt_ts = None
+    first_pkt_ts = None
 
     wall_start = time.time()
+    last_shifted_ts = wall_start
+
+    initial_alerts = {a.alert_id: a.event_count for a in live.alert_manager.active_alerts()}
+
+    windows_evaluated = 0
+    original_evaluate_window = live.evaluate_window
+
+    def tracked_evaluate_window(*args, **kwargs):
+        nonlocal windows_evaluated
+        windows_evaluated += 1
+        return original_evaluate_window(*args, **kwargs)
+
+    live.evaluate_window = tracked_evaluate_window
 
     with PcapReader(pcap_path) as reader:
         for packet in reader:
 
             pkt_ts = float(packet.time)
+            if first_pkt_ts is None:
+                first_pkt_ts = pkt_ts
 
             if not max_speed and prev_pkt_ts is not None:
                 gap = (pkt_ts - prev_pkt_ts) / max(speed, 0.0001)
@@ -92,6 +108,11 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
             packet_count += 1
             byte_count += len(packet)
 
+            # Time-shift the packet to the current wall-clock time
+            shifted_ts = wall_start + (pkt_ts - first_pkt_ts)
+            packet.time = shifted_ts
+            last_shifted_ts = shifted_ts
+
             # This one call does everything the live collector does:
             # flow tracking, feature windows, all 7 detectors, alerts.
             live.process_packet(packet)
@@ -99,8 +120,39 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
             if packet_count % 2000 == 0:
                 _print_progress(packet_count, byte_count, wall_start)
 
+    # Force flush the final partial window
+    if live.window_manager and live.window_manager.current:
+        # Provide a timestamp slightly after the end of the current window
+        final_ts = last_shifted_ts + live.window_manager.window_seconds + 0.1
+        features = live.window_manager.flush_if_ready(final_ts)
+        if features:
+            source_features = live.source_aggregator.get_features(
+                features["window_duration"]
+            )
+            communication_features = live.communication_context.snapshot()
+
+            live.source_aggregator.reset()
+            live.communication_context.reset()
+
+            live.evaluate_window(
+                features,
+                source_features,
+                final_ts,
+                communication_features,
+            )
+
+    live.evaluate_window = original_evaluate_window
+
+    final_alerts = live.alert_manager.active_alerts()
+    alert_events = 0
+    for a in final_alerts:
+        if a.alert_id not in initial_alerts:
+            alert_events += a.event_count
+        elif a.event_count > initial_alerts[a.alert_id]:
+            alert_events += (a.event_count - initial_alerts[a.alert_id])
+
     wall_elapsed = max(time.time() - wall_start, 1e-6)
-    return _print_summary(packet_count, byte_count, wall_elapsed)
+    return _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated, alert_events)
 
 
 def _print_progress(packet_count, byte_count, wall_start):
@@ -110,7 +162,7 @@ def _print_progress(packet_count, byte_count, wall_start):
     print(f"[progress] {packet_count} packets | {pps:.1f} pkt/s | {mbps:.2f} Mbps")
 
 
-def _print_summary(packet_count, byte_count, wall_elapsed):
+def _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated=0, alert_events=0):
     pps = packet_count / wall_elapsed
     mbps = (byte_count * 8 / 1_000_000) / wall_elapsed
     # FlowEngine keys flows by 5-tuple; entries persist until they
@@ -130,6 +182,8 @@ def _print_summary(packet_count, byte_count, wall_elapsed):
     if flows_seen is not None:
         print(f"Total flows observed    : {flows_seen}")
         print(f"Flow rate               : {flows_seen / wall_elapsed:.2f} flows/sec")
+    print(f"Windows evaluated       : {windows_evaluated}")
+    print(f"Alert events generated  : {alert_events}")
     print("=" * 70)
     print("Report the 'Sustained throughput' / 'Flow rate' lines above")
     print("as your demonstrated throughput target for the SIH writeup.")
@@ -143,6 +197,8 @@ def _print_summary(packet_count, byte_count, wall_elapsed):
         "sustained_mbps": float(mbps),
         "flows_seen": int(flows_seen) if flows_seen is not None else 0,
         "flow_rate": float(flows_seen / wall_elapsed) if flows_seen is not None else 0.0,
+        "windows_evaluated": int(windows_evaluated),
+        "alert_events": int(alert_events),
     }
 
 

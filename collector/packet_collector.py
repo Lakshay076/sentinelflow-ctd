@@ -336,7 +336,11 @@ def process_packet(packet):
             )
 
         # This packet belongs to the current/new window.
-        source_aggregator.add_packet(**packet_data)
+        source_aggregator.add_packet(
+            **packet_data,
+            initiator_ip=flow.initiator_ip,
+            responder_ip=flow.responder_ip,
+        )
         communication_context.record(flow, record)
 
         behavior_window.add_packet(

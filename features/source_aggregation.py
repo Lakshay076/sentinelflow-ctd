@@ -41,6 +41,8 @@ class SourceAggregator:
         tcp_syn=False,
         tcp_ack=False,
         tcp_rst=False,
+        initiator_ip=None,
+        responder_ip=None,
     ):
         source = self.sources[src_ip]
         dest = self.sources[dst_ip]
@@ -49,18 +51,31 @@ class SourceAggregator:
         source["bytes"] += packet_bytes
         dest["bytes_received"] += packet_bytes
 
-        source["destination_ips"].add(dst_ip)
+        # Connection-attempt features are attributed to the
+        # flow initiator, not blindly to packet src_ip.
+        #
+        # This is critical for passive monitoring:
+        #   initiator -> SYN     = connection attempt
+        #   responder -> SYN+ACK = response, not a new attempt
+        #
+        # General packet/byte statistics above remain packet-direction
+        # based so traffic and transfer analytics are preserved.
+        connection_source_ip = initiator_ip or src_ip
+        connection_source = self.sources[connection_source_ip]
 
-        if dst_port:
-            source["destination_ports"].add(dst_port)
+        if tcp_syn and initiator_ip == src_ip:
+            connection_source["destination_ips"].add(dst_ip)
+
+            if dst_port:
+                connection_source["destination_ports"].add(dst_port)
 
         protocol = protocol.upper()
 
         if protocol == "TCP":
             source["tcp_packets"] += 1
 
-            if tcp_syn:
-                source["tcp_syn"] += 1
+            if tcp_syn and initiator_ip == src_ip:
+                connection_source["tcp_syn"] += 1
 
             if tcp_ack:
                 source["tcp_ack"] += 1
@@ -80,7 +95,14 @@ class SourceAggregator:
             f"/{protocol}"
         )
 
-        source["flows"].add(flow_id)
+        # Count the observed flow under its initiator for
+        # connection-rate / reconnaissance features.
+        if initiator_ip == src_ip:
+            connection_source["flows"].add(flow_id)
+        elif initiator_ip is None:
+            # Non-TCP or otherwise role-less traffic retains the
+            # historical packet-direction behavior.
+            source["flows"].add(flow_id)
 
     def get_features(self, duration):
         duration = max(duration, 0.000001)

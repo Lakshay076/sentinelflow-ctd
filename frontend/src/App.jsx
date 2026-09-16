@@ -69,6 +69,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [simulating, setSimulating] = useState(null);
+  const [demoConfig, setDemoConfig] = useState(null);
+  const [demoCommand, setDemoCommand] = useState(null);
   const [filterType, setFilterType] = useState("ALL");
 
   // PCAP Ingest & Benchmark State
@@ -227,21 +229,123 @@ function App() {
     }
   }
 
+
   async function triggerSimulation(attackType) {
-    try {
-      setSimulating(attackType);
-      const res = await fetch(`${API_BASE}/api/alerts/simulate/${attackType}`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        await fetchData();
+  try {
+    setSimulating(attackType);
+
+    let config = demoConfig;
+
+    if (!config) {
+      const configRes = await fetch(`${API_BASE}/api/alerts/demo-config`);
+
+      if (!configRes.ok) {
+        throw new Error("Demo configuration unavailable");
       }
-    } catch (err) {
-      console.error("Simulation failed:", err);
-    } finally {
-      setSimulating(null);
+
+      config = await configRes.json();
+      setDemoConfig(config);
     }
+
+        const commands = {
+      PORT_SCAN: `sudo nmap -sS -Pn -p 20-44 ${config.target_ip}`,
+
+      SYN_FLOOD: `sudo hping3 -S -p 80 -c 500 -i u1000 ${config.target_ip}`,
+
+      C2_BEACONING: `for i in {1..5}; do nc -zvw 2 ${config.target_ip} 8080; sleep 5; done`,
+
+      DGA_DNS_TUNNELLING: `sudo python3 - <<'PY'
+from scapy.all import IP, UDP, DNS, DNSQR, send
+import random, string, time
+
+for _ in range(10):
+    token = ''.join(random.choices(
+        string.ascii_lowercase + string.digits, k=32
+    ))
+    domain = token + ".example.com"
+
+    pkt = (
+        IP(src="${config.source_ip}", dst="${config.target_ip}") /
+        UDP(sport=40000, dport=53) /
+        DNS(rd=1, qd=DNSQR(qname=domain))
+    )
+
+    send(pkt, iface="eth2", verbose=False)
+    time.sleep(0.05)
+
+print("DGA DNS TEST COMPLETE")
+PY`,
+
+      TLS_METADATA_ANOMALY: `sudo python3 - <<'PY'
+from scapy.all import IP, TCP, send
+from scapy.layers.tls.all import TLS, TLSClientHello
+
+pkt = (
+    IP(src="${config.source_ip}", dst="${config.target_ip}") /
+    TCP(sport=44444, dport=8443, flags="PA") /
+    TLS(msg=[
+        TLSClientHello(
+            version=0x0303,
+            ciphers=[0x002f]
+        )
+    ])
+)
+
+send(pkt, iface="eth2", verbose=False)
+print("SUSPICIOUS TLS CLIENTHELLO SENT")
+PY`,
+
+      DATA_EXFILTRATION: `python3 -c "print('A' * 600000)" > /tmp/exfil_test.bin && pv -L 70000 /tmp/exfil_test.bin | nc ${config.target_ip} 9000`,
+    };
+
+    setDemoCommand({
+      attackType,
+      sourceIp: config.source_ip,
+      targetIp: config.target_ip,
+      sensorInterface: config.sensor_interface,
+      sensorMode: config.sensor_mode,
+      command: commands[attackType] || "",
+      status: "PROCESSING",
+    });
+
+    const res = await fetch(
+      `${API_BASE}/api/alerts/simulate/${encodeURIComponent(attackType)}`,
+      {
+        method: "POST",
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.detail || "Demo simulation failed");
+    }
+
+    setDemoCommand({
+      attackType: data.attack_type,
+      sourceIp: data.source_ip,
+      targetIp: data.target_ip,
+      sensorInterface: config.sensor_interface,
+      sensorMode: config.sensor_mode,
+      syntheticPackets: data.synthetic_packets,
+      command: commands[attackType] || "",
+      status: data.detected ? "DETECTED" : "COMPLETED",
+      alert: data.alert,
+    });
+
+    await fetchData();
+  } catch (err) {
+    console.error("Demo simulation failed:", err);
+
+    setDemoCommand({
+      attackType,
+      status: "ERROR",
+      error: err.message,
+    });
+  } finally {
+    setSimulating(null);
   }
+}
 
   async function resolveAllAlerts() {
     try {
@@ -305,6 +409,20 @@ function App() {
     fetchData();
     const interval = setInterval(fetchData, 4000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/alerts/demo-config`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Demo configuration unavailable");
+        }
+        return res.json();
+      })
+      .then((data) => setDemoConfig(data))
+      .catch((err) => {
+        console.error("Failed to load demo configuration:", err);
+      });
   }, []);
 
   useEffect(() => {
@@ -532,7 +650,7 @@ function App() {
               <OverviewPage
                 lastUpdated={lastUpdated}
                 stats={stats}
-                benchmarkResult={benchmarkResult}
+                liveMetrics={liveMetrics}
                 activeAlerts={activeAlerts}
                 history={history}
                 filterType={filterType}
@@ -575,6 +693,8 @@ function App() {
               <DemoLabPage
                 simulating={simulating}
                 triggerSimulation={triggerSimulation}
+                demoConfig={demoConfig}
+                demoCommand={demoCommand}
                 isGenerating={isGenerating}
                 isReplaying={isReplaying}
                 isValidating={isValidating}

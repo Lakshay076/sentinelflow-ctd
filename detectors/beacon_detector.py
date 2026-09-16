@@ -33,6 +33,10 @@ MAX_INTERVAL_CV = 0.25
 # focused beaconing to one C2 server.
 MAX_REPEATED_DESTINATIONS = 3
 
+# Beaconing should represent periodic check-ins, not
+# high-rate packet/flow bursts such as floods or transfers.
+MIN_MEAN_INTERVAL = 1.0
+
 
 def detect_c2_beaconing(features: Dict) -> DetectionResult:
 
@@ -83,7 +87,20 @@ def detect_c2_beaconing(features: Dict) -> DetectionResult:
         )
 
     # -----------------------------------------------------
-    # Rule 3: Focused on a small set of destinations,
+    # Rule 3: Meaningful check-in interval
+    # -----------------------------------------------------
+
+    if mean_interval >= MIN_MEAN_INTERVAL:
+
+        score += 1
+
+        reasons.append(
+            f"meaningful check-in interval "
+            f"(average={mean_interval:.1f}s)"
+        )
+
+    # -----------------------------------------------------
+    # Rule 4: Focused on a small set of destinations,
     # not spread across many (that would look more like
     # scanning than beaconing).
     # -----------------------------------------------------
@@ -107,11 +124,13 @@ def detect_c2_beaconing(features: Dict) -> DetectionResult:
 
     regular_timing = interval_cv <= MAX_INTERVAL_CV
     enough_connections = connection_count >= MIN_CONNECTIONS
+    meaningful_interval = mean_interval >= MIN_MEAN_INTERVAL
 
     detected = (
         regular_timing
         and enough_connections
-        and score >= 2
+        and meaningful_interval
+        and score >= 3
     )
 
     if not detected:
@@ -123,7 +142,7 @@ def detect_c2_beaconing(features: Dict) -> DetectionResult:
     else:
         severity = "LOW"
 
-    confidence = score / 3.0
+    confidence = min(score / 4.0, 1.0)
 
     return DetectionResult(
         detected=detected,

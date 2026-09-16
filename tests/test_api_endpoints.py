@@ -14,7 +14,6 @@ from api.routes.alerts import (
     get_alert_history,
     simulate_attack,
     resolve_all_alerts,
-    SIMULATION_PRESETS,
 )
 from api.routes.pcap import (
     get_pcap_files,
@@ -41,11 +40,31 @@ def test_stats_initial():
 
 
 def test_simulate_all_attacks():
-    for attack in SIMULATION_PRESETS.keys():
+    attacks = [
+        "PORT_SCAN",
+        "SYN_FLOOD",
+        "C2_BEACONING",
+        "DGA_DNS_TUNNELLING",
+        "TLS_METADATA_ANOMALY",
+        "DATA_EXFILTRATION",
+    ]
+
+    for attack in attacks:
         payload = simulate_attack(attack_type=attack)
-        assert payload["status"] == "simulated"
+
+        assert payload["status"] == "completed"
+        assert payload["attack_type"] == attack
+        assert payload["detected"] is True
+        assert payload["source_ip"] == "10.10.10.10"
+        assert payload["target_ip"] == "10.10.10.20"
         assert payload["alert"]["attack_type"] == attack
-        print(f"  ✓ simulate_attack('{attack}') -> alert_id={payload['alert']['alert_id']}, severity={payload['alert']['severity']}")
+        assert payload["alert"]["confidence"] > 0
+
+        print(
+            f"  ✓ simulate_attack('{attack}') -> "
+            f"detected={payload['detected']}, "
+            f"confidence={payload['alert']['confidence']:.2f}"
+        )
 
 
 def test_active_and_history():
@@ -106,7 +125,7 @@ def main():
 
     test_health()
     test_stats_initial()
-    print("\nSimulating all 7 attack vectors for frontend dashboard...")
+    print("\nSimulating all 6 controlled attack vectors through the MONI pipeline...")
     test_simulate_all_attacks()
     print("\nVerifying Active & History feeds for UI rendering...")
     test_active_and_history()
