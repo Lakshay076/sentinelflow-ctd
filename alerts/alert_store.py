@@ -45,13 +45,35 @@ class AlertStore:
         if self.database_url and "YOUR_PASSWORD" not in self.database_url:
             try:
                 import psycopg
-                conn = psycopg.connect(self.database_url, connect_timeout=1)
-                conn.close()
+                with psycopg.connect(self.database_url, connect_timeout=1) as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS alerts (
+                                alert_id SERIAL PRIMARY KEY,
+                                source_ip TEXT NOT NULL,
+                                attack_type TEXT NOT NULL,
+                                severity TEXT NOT NULL,
+                                confidence REAL NOT NULL,
+                                first_seen REAL NOT NULL,
+                                last_seen REAL NOT NULL,
+                                resolved_at REAL,
+                                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                                event_count INTEGER NOT NULL DEFAULT 1,
+                                reasons JSONB NOT NULL,
+                                initiator_ip TEXT,
+                                responder_ips JSONB,
+                                related_flows JSONB,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            );
+                            """
+                        )
+                    conn.commit()
                 self.use_postgres = True
             except Exception as e:
-                print(f"[AlertStore] PostgreSQL connection failed: {type(e).__name__}: {e}", flush=True)
+                print(f"[AlertStore] PostgreSQL connection/init failed: {type(e).__name__}: {e}", flush=True)
                 self.use_postgres = False
-
 
         if not self.use_postgres:
             self._init_sqlite()
@@ -73,11 +95,23 @@ class AlertStore:
                     status TEXT NOT NULL DEFAULT 'ACTIVE',
                     event_count INTEGER NOT NULL DEFAULT 1,
                     reasons TEXT NOT NULL,
+                    initiator_ip TEXT,
+                    responder_ips TEXT,
+                    related_flows TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
+            
+            # Handle migration of existing SQLite databases
+            try:
+                cursor.execute("ALTER TABLE alerts ADD COLUMN initiator_ip TEXT")
+                cursor.execute("ALTER TABLE alerts ADD COLUMN responder_ips TEXT")
+                cursor.execute("ALTER TABLE alerts ADD COLUMN related_flows TEXT")
+            except sqlite3.OperationalError:
+                pass # Columns already exist
+                
             conn.commit()
 
     def _connect_postgres(self):
