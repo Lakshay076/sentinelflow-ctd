@@ -208,6 +208,10 @@ class BehaviorWindow:
                 "bytes_per_second": bytes_sent / duration,
                 "tcp_packets": source["tcp_packets"],
                 "udp_packets": source["udp_packets"],
+                "udp_rate": source["udp_packets"] / duration,
+                "udp_packet_ratio": (
+                    source["udp_packets"] / max(packets, 1)
+                ),
                 "icmp_packets": source["icmp_packets"],
                 "tcp_syn": source["tcp_syn"],
                 "tcp_ack": source["tcp_ack"],

@@ -63,7 +63,7 @@ class SourceAggregator:
         connection_source_ip = initiator_ip or src_ip
         connection_source = self.sources[connection_source_ip]
 
-        if tcp_syn and initiator_ip == src_ip:
+        if tcp_syn and (initiator_ip is None or initiator_ip == src_ip):
             connection_source["destination_ips"].add(dst_ip)
 
             if dst_port:
@@ -74,7 +74,7 @@ class SourceAggregator:
         if protocol == "TCP":
             source["tcp_packets"] += 1
 
-            if tcp_syn and initiator_ip == src_ip:
+            if tcp_syn and (initiator_ip is None or initiator_ip == src_ip):
                 connection_source["tcp_syn"] += 1
 
             if tcp_ack:
@@ -85,6 +85,9 @@ class SourceAggregator:
 
         elif protocol == "UDP":
             source["udp_packets"] += 1
+            source["destination_ips"].add(dst_ip)
+            if dst_port:
+                source["destination_ports"].add(dst_port)
 
         elif protocol == "ICMP":
             source["icmp_packets"] += 1
@@ -131,6 +134,8 @@ class SourceAggregator:
                 "bytes_per_second": bytes_sent / duration,
                 "tcp_packets": source["tcp_packets"],
                 "udp_packets": source["udp_packets"],
+                "udp_rate": source["udp_packets"] / duration,
+                "udp_packet_ratio": source["udp_packets"] / max(packets, 1),
                 "icmp_packets": source["icmp_packets"],
                 "tcp_syn": source["tcp_syn"],
                 "tcp_ack": source["tcp_ack"],

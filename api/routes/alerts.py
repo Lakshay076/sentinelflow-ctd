@@ -63,6 +63,8 @@ def simulate_attack(attack_type: str, source_ip: Optional[str] = None):
     allowed_attacks = {
         "PORT_SCAN",
         "SYN_FLOOD",
+        "UDP_FLOOD",
+        "DISTRIBUTED_UDP_FLOOD",
         "C2_BEACONING",
         "DGA_DNS_TUNNELLING",
         "TLS_METADATA_ANOMALY",

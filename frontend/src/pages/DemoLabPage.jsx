@@ -51,6 +51,8 @@ export function DemoLabPage({
     const commands = {
       PORT_SCAN: `sudo nmap -sS -Pn -p 20-44 ${demoConfig.target_ip}`,
       SYN_FLOOD: `sudo hping3 -S -p 80 -c 500 -i u1000 ${demoConfig.target_ip}`,
+      UDP_FLOOD: `sudo hping3 --udp -p 53 -c 500 -i u1000 ${demoConfig.target_ip}`,
+      DISTRIBUTED_UDP_FLOOD: `sudo hping3 --udp --rand-source -p 53 -c 500 -i u2000 ${demoConfig.target_ip}`,
       C2_BEACONING: `for i in {1..5}; do nc -zvw 2 ${demoConfig.target_ip} 8080; sleep 5; done`,
       DGA_DNS_TUNNELLING: `sudo python3 - <<'PY'
 from scapy.all import IP, UDP, DNS, DNSQR, send

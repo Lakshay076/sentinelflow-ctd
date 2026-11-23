@@ -1,0 +1,293 @@
+{
+  "system_metadata": {
+    "os": "Windows 11 (10.0.26200)",
+    "architecture": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "python_version": "3.14.2",
+    "scapy_version": "2.7.0",
+    "cores_available": 12
+  },
+  "demo_metrics_reconciliation": {
+    "pcap": "demo.pcap",
+    "total_alerts": 10,
+    "unique_alerted_hosts": 9,
+    "overlaps": [
+      {
+        "source_ip": "10.0.0.52",
+        "is_benign": false,
+        "alert_count": 2,
+        "classes": [
+          "UDP_FLOOD",
+          "DATA_EXFILTRATION"
+        ],
+        "reasons": [
+          "high UDP packet dominance (1.00 of total traffic >= 0.8)",
+          "high volumetric UDP bandwidth (50.2 KB/s >= 48.8 KB/s)",
+          "concentrated UDP target port profile (1 destination port(s))",
+          "unidirectional volumetric UDP traffic (amplification ratio unverified under one-way visibility)",
+          "large outbound volume (591192 bytes sent in window)",
+          "asymmetric traffic direction (sent 591192.0x more than received)",
+          "sustained transfer (414 packets in window)",
+          "high sustained transfer rate (59119 bytes/sec)"
+        ]
+      }
+    ],
+    "host_metrics_overall": {
+      "tp": 6,
+      "fp": 3,
+      "tn": 17,
+      "fn": 0,
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1": 0.8,
+      "specificity": 0.85,
+      "fpr": 0.15
+    },
+    "host_metrics_heuristics_only": {
+      "tp": 6,
+      "fp": 1,
+      "tn": 19,
+      "fn": 0,
+      "precision": 0.8571428571428571,
+      "recall": 1.0,
+      "f1": 0.923076923076923,
+      "specificity": 0.95,
+      "fpr": 0.05
+    },
+    "host_metrics_ml_only": {
+      "tp": 0,
+      "fp": 2,
+      "tn": 18,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "specificity": 0.9,
+      "fpr": 0.1
+    },
+    "heur_fp_hosts": [
+      "10.0.0.17"
+    ],
+    "ml_fp_hosts": [
+      "10.0.0.28",
+      "10.0.0.14"
+    ],
+    "total_flows": 349,
+    "malicious_flows": 49,
+    "benign_flows": 300
+  },
+  "benign_metrics_reconciliation": {
+    "pcap": "benign.pcap",
+    "total_alerts": 3,
+    "unique_alerted_hosts": 2,
+    "overlaps": [
+      {
+        "source_ip": "10.0.0.17",
+        "is_benign": true,
+        "alert_count": 2,
+        "classes": [
+          "ML_ANOMALY",
+          "PORT_SCAN"
+        ],
+        "reasons": [
+          "tls_avg_cipher_count deviates strongly from normal baseline (value=999.00, baseline=20.00)",
+          "unique_destinations unusually higher than normal (value=8.00, z-score=39.2)",
+          "outbound_inbound_ratio unusually higher than normal (value=1885.00, z-score=31.6)",
+          "high destination-host fan-out (9 hosts)",
+          "multiple connection attempts (14 flows)",
+          "elevated SYN attempt ratio during host sweep (0.50)",
+          "targeted horizontal port sweep profile (3 port(s) across 9 hosts, 1.00 ports/host)",
+          "horizontal reconnaissance sweep (probing single/few ports across multiple destination hosts)"
+        ]
+      }
+    ],
+    "host_metrics_overall": {
+      "tp": 0,
+      "fp": 2,
+      "tn": 18,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "specificity": 0.9,
+      "fpr": 0.1
+    },
+    "host_metrics_heuristics_only": {
+      "tp": 0,
+      "fp": 1,
+      "tn": 19,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "specificity": 0.95,
+      "fpr": 0.05
+    },
+    "host_metrics_ml_only": {
+      "tp": 0,
+      "fp": 2,
+      "tn": 18,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "specificity": 0.9,
+      "fpr": 0.1
+    },
+    "heur_fp_hosts": [
+      "10.0.0.17"
+    ],
+    "ml_fp_hosts": [
+      "10.0.0.17",
+      "10.0.0.25"
+    ],
+    "total_flows": 300,
+    "malicious_flows": 0,
+    "benign_flows": 300
+  },
+  "latency_profile": {
+    "packet_count": 917,
+    "ingestion_us": {
+      "mean": 10668.167284300862,
+      "p50": 46.30000330507755,
+      "p95": 48808.59999684617,
+      "p99": 253982.0999954827
+    },
+    "feature_extraction_ms": {
+      "mean": 0.6240796215866727,
+      "p50": 0.6128000095486641,
+      "p95": 0.9900999721139669,
+      "p99": 1.160500047262758
+    },
+    "detector_execution_ms": {
+      "mean": 163.88352963366304,
+      "p50": 218.6523000127636,
+      "p95": 250.55900000734255,
+      "p99": 280.07000003708526
+    },
+    "db_persistence_ms": {
+      "mean": 16.567835189764285,
+      "p50": 12.653400015551597,
+      "p95": 35.47950001666322,
+      "p99": 44.44379999767989
+    },
+    "total_window_ms": {
+      "mean": 181.07738333357568,
+      "p50": 229.34990003705025,
+      "p95": 280.38030001334846,
+      "p99": 305.3807999822311
+    },
+    "packet_to_alert_s": {
+      "mean": 31.1948168990428,
+      "p50": 25.654207944869995,
+      "p95": 77.03848600387573,
+      "p99": 80.19282293319702
+    },
+    "window_count": 54
+  },
+  "synthetic_load_tiers": [
+    {
+      "tier_name": "100 pps",
+      "offered_pps": 100,
+      "offered_packets": 200,
+      "processed_packets": 200,
+      "app_dropped_packets": 0,
+      "app_drop_rate_pct": 0.0,
+      "os_capture_layer_dropped": 0,
+      "wall_duration_s": 1.5472279000096023,
+      "achieved_pps": 129.2634394705258,
+      "achieved_mbps": 0.1737300626483867,
+      "cpu_percent": 97.95745022375785,
+      "packet_latency_p50_us": 1235.4999780654907,
+      "packet_latency_p95_us": 1775.2000130712986,
+      "packet_latency_p99_us": 1960.7000285759568,
+      "window_eval_mean_ms": 632.7602499804925,
+      "window_eval_p95_ms": 635.372799995821,
+      "peak_ram_mb": 5.856131553649902
+    },
+    {
+      "tier_name": "500 pps",
+      "offered_pps": 500,
+      "offered_packets": 1000,
+      "processed_packets": 1000,
+      "app_dropped_packets": 0,
+      "app_drop_rate_pct": 0.0,
+      "os_capture_layer_dropped": 0,
+      "wall_duration_s": 3.2394317999714985,
+      "achieved_pps": 308.6961114627566,
+      "achieved_mbps": 0.41488757380594493,
+      "cpu_percent": 92.12649576466643,
+      "packet_latency_p50_us": 1298.1999898329377,
+      "packet_latency_p95_us": 1871.1999873630702,
+      "packet_latency_p99_us": 2026.3000042177737,
+      "window_eval_mean_ms": 855.5645500018727,
+      "window_eval_p95_ms": 881.6639999859035,
+      "peak_ram_mb": 13.211339950561523
+    },
+    {
+      "tier_name": "1000 pps",
+      "offered_pps": 1000,
+      "offered_packets": 2000,
+      "processed_packets": 2000,
+      "app_dropped_packets": 0,
+      "app_drop_rate_pct": 0.0,
+      "os_capture_layer_dropped": 0,
+      "wall_duration_s": 5.043951299972832,
+      "achieved_pps": 396.5145341531692,
+      "achieved_mbps": 0.5329155339018595,
+      "cpu_percent": 95.72108676041351,
+      "packet_latency_p50_us": 1349.4999730028212,
+      "packet_latency_p95_us": 1936.5000189282,
+      "packet_latency_p99_us": 2062.699990347028,
+      "window_eval_mean_ms": 955.0253500055987,
+      "window_eval_p95_ms": 972.7177000022493,
+      "peak_ram_mb": 23.30830669403076
+    },
+    {
+      "tier_name": "2500 pps",
+      "offered_pps": 2500,
+      "offered_packets": 5000,
+      "processed_packets": 5000,
+      "app_dropped_packets": 0,
+      "app_drop_rate_pct": 0.0,
+      "os_capture_layer_dropped": 0,
+      "wall_duration_s": 10.065745600033551,
+      "achieved_pps": 496.73419125388324,
+      "achieved_mbps": 0.6676107530452191,
+      "cpu_percent": 97.32885559880775,
+      "packet_latency_p50_us": 1384.7000082023442,
+      "packet_latency_p95_us": 1997.100014705211,
+      "packet_latency_p99_us": 2255.4000024683774,
+      "window_eval_mean_ms": 1027.6291000191122,
+      "window_eval_p95_ms": 1076.7069000285119,
+      "peak_ram_mb": 52.540096282958984
+    }
+  ],
+  "passive_audit_violations": 1,
+  "cryptographic_reference_vectors": {
+    "ja3_salesforce_vector_1": {
+      "raw": "769,47-53-5-10-49161-49162-49171-49172-50-56-19-4,0-10-11,23-24-25,0",
+      "hash": "ada70206e40642a3e4461f35503241d5",
+      "expected": "ada70206e406420ff8544573b4e6b574",
+      "pass": false
+    },
+    "ja3_salesforce_tor_vector": {
+      "raw": "771,49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53-10,0-23-65281-10-11,29-23-24,0",
+      "hash": "d43417cbf59b9e4582fca5f1766b9aa3",
+      "expected": "e7d705a3286e19ea42f587b344ee6865",
+      "pass": false
+    },
+    "ja3s_salesforce_vector": {
+      "raw": "771,49195,65281-0-11",
+      "hash": "9a022b14200c7389ebbb1436d5cf1339",
+      "expected": "eb1d94de9e816d21032252a123ff9a28",
+      "pass": false
+    },
+    "ja4_foxio_structure": {
+      "ja4_full": "t13d0504h2_e133e205ac38_ef5f37ab036a",
+      "ja4_a": "t13d0504h2",
+      "expected_ja4_a": "t13d0504h2",
+      "pass": true
+    }
+  }
+}

@@ -106,4 +106,23 @@ def calculate_security_features(features: Dict) -> Dict:
         "source_diversity": source_diversity,
 
         "destination_diversity": destination_diversity,
+
+        "source_ip_entropy": features.get("source_ip_entropy", 0.0),
+
+        "normalized_source_entropy": features.get("normalized_source_entropy", 0.0),
+
+        "udp_source_entropy": features.get("udp_source_entropy", 0.0),
+
+        "udp_normalized_entropy": features.get("udp_normalized_entropy", 0.0),
+
+        "udp_rate": features.get("udp_rate", 0.0),
+
+        "udp_bytes_per_second": features.get("udp_bytes_per_second", 0.0),
+
+        "udp_packet_ratio": features.get("udp_packet_ratio", 0.0),
+
+        "mean_packets_per_source": features.get(
+            "mean_packets_per_source",
+            packets / max(unique_sources, 1)
+        ),
     }

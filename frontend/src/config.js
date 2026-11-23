@@ -33,6 +33,22 @@ export const DETECTORS_CONFIG = [
     description: "Detects abnormal surges of incomplete TCP SYN handshakes.",
   },
   {
+    type: "UDP_FLOOD",
+    label: "UDP Flood",
+    category: "Volumetric DDoS",
+    icon: Zap,
+    color: "#f97316",
+    description: "Detects high-rate UDP surges, port saturation, and reflection vectors.",
+  },
+  {
+    type: "DISTRIBUTED_UDP_FLOOD",
+    label: "Distributed UDP Flood",
+    category: "Volumetric DDoS",
+    icon: Zap,
+    color: "#dc2626",
+    description: "Detects spoofed, multi-source UDP floods via source IP entropy.",
+  },
+  {
     type: "DATA_EXFILTRATION",
     label: "Data Exfiltration",
     category: "Data Loss",

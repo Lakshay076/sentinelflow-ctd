@@ -19,6 +19,8 @@ from alerts.alert_store import AlertStore
 ATTACK_TYPES = {
     "PORT_SCAN",
     "SYN_FLOOD",
+    "UDP_FLOOD",
+    "DISTRIBUTED_UDP_FLOOD",
     "C2_BEACONING",
     "DGA_DNS_TUNNELLING",
     "TLS_METADATA_ANOMALY",
@@ -88,6 +90,58 @@ def syn_flood_packets(src, dst, base):
             )
         )
         packets[-1].time = base + (index * 0.001)
+
+    return packets
+
+
+def udp_packet(src, dst, sport, dport, payload=None):
+    packet = IP(src=src, dst=dst) / UDP(
+        sport=sport,
+        dport=dport,
+    )
+
+    if payload:
+        packet = packet / Raw(load=payload)
+
+    return packet
+
+
+def udp_flood_packets(src, dst, base):
+    packets = []
+    payload = b"X" * 128
+
+    for index in range(500):
+        packets.append(
+            udp_packet(
+                src,
+                dst,
+                20000 + (index % 1000),
+                53,
+                payload=payload,
+            )
+        )
+        packets[-1].time = base + (index * 0.001)
+
+    return packets
+
+
+def distributed_udp_flood_packets(dst, base):
+    packets = []
+    payload = b"X" * 128
+
+    # 300 UDP packets distributed across 50 spoofed source IPs (6 pkts/source)
+    for index in range(300):
+        src_ip = f"10.99.{(index % 50) + 1}.{(index % 10) + 1}"
+        packets.append(
+            udp_packet(
+                src_ip,
+                dst,
+                20000 + (index % 1000),
+                53,
+                payload=payload,
+            )
+        )
+        packets[-1].time = base + (index * 0.002)
 
     return packets
 
@@ -198,6 +252,12 @@ def build_packets(attack_type, source_ip, target_ip, base):
     if attack_type == "SYN_FLOOD":
         return syn_flood_packets(source_ip, target_ip, base)
 
+    if attack_type == "UDP_FLOOD":
+        return udp_flood_packets(source_ip, target_ip, base)
+
+    if attack_type == "DISTRIBUTED_UDP_FLOOD":
+        return distributed_udp_flood_packets(target_ip, base)
+
     if attack_type == "C2_BEACONING":
         return c2_beacon_packets(source_ip, target_ip, base)
 
@@ -262,15 +322,16 @@ def run_demo_simulation(
     collector.process_packet(boundary)
 
     store = AlertStore()
+    lookup_source = "__NETWORK__" if attack_type == "DISTRIBUTED_UDP_FLOOD" else source_ip
     alert = store.find_active(
-        source_ip=source_ip,
+        source_ip=lookup_source,
         attack_type=attack_type,
     )
 
     return {
         "status": "completed",
         "attack_type": attack_type,
-        "source_ip": source_ip,
+        "source_ip": lookup_source,
         "target_ip": target_ip,
         "synthetic_packets": len(packets),
         "detected": alert is not None,

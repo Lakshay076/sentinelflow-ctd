@@ -141,6 +141,29 @@ class FeatureContext:
                 "bytes_per_second", 0.0
             )
 
+            # Explicit rolling-window features for slow-and-low port scan / reconnaissance
+            combined["rolling_unique_destinations"] = behavior.get(
+                "unique_destinations", 0
+            )
+            combined["rolling_unique_destination_ports"] = behavior.get(
+                "unique_destination_ports", 0
+            )
+            combined["rolling_active_flows"] = behavior.get(
+                "active_flows", 0
+            )
+            combined["rolling_tcp_syn"] = behavior.get(
+                "tcp_syn", 0
+            )
+            combined["rolling_syn_ratio"] = behavior.get(
+                "syn_packet_ratio", 0.0
+            )
+            combined["rolling_ports_per_destination"] = behavior.get(
+                "ports_per_destination", 0.0
+            )
+            combined["rolling_flows_per_second"] = behavior.get(
+                "flows_per_second", 0.0
+            )
+
 
         for key, value in behavior.items():
             if key not in combined:

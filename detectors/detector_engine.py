@@ -25,6 +25,8 @@ from detectors.detection_result import DetectionResult
 
 from detectors.scan_detector import detect_port_scan
 from detectors.syn_flood_detector import detect_syn_flood
+from detectors.udp_flood_detector import detect_udp_flood
+from detectors.network_entropy_detector import detect_distributed_udp_flood
 from detectors.exfiltration_detector import detect_exfiltration
 from detectors.beacon_detector import detect_c2_beaconing
 from detectors.dga_detector import detect_dga_dns
@@ -54,6 +56,7 @@ class DetectorEngine:
         self.source_detectors = [
             detect_port_scan,
             detect_syn_flood,
+            detect_udp_flood,
             detect_exfiltration,
             detect_c2_beaconing,
             detect_dga_dns,
@@ -84,11 +87,14 @@ class DetectorEngine:
         # ---------------------------------------------
         # Network-level detectors.
         #
-        # Currently empty -- reserved for future
-        # network-wide detection logic.
+        # Evaluates aggregate network-wide and security
+        # features (e.g. distributed spoofed DDoS floods
+        # and source IP entropy shifts).
         # ---------------------------------------------
 
-        self.network_detectors = []
+        self.network_detectors = [
+            detect_distributed_udp_flood,
+        ]
 
     # =================================================
     # SOURCE DETECTION

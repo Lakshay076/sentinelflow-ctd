@@ -18,7 +18,13 @@ from telemetry.live_metrics import live_metrics
 from features.beacon_tracker import BeaconTracker
 from features.dns_tracker import DNSTracker
 from features.tls_tracker import TLSTracker
-from features.tls_parser import parse_client_hello, compute_ja3
+from features.tls_parser import (
+    parse_client_hello,
+    compute_ja3,
+    compute_ja4,
+    parse_server_hello,
+    parse_quic_packet,
+)
 
 import os
 import sys
@@ -212,6 +218,7 @@ def process_packet(packet):
                     parsed_hello = parse_client_hello(tcp_payload)
                     if parsed_hello is not None:
                         _, ja3_hash = compute_ja3(parsed_hello)
+                        ja4_full, ja4_hash = compute_ja4(parsed_hello, protocol="t")
                         tls_tracker.add_client_hello(
                             timestamp=timestamp,
                             src_ip=ip.src,
@@ -220,6 +227,26 @@ def process_packet(packet):
                             cipher_count=len(parsed_hello["cipher_suites"]),
                             extension_count=len(parsed_hello["extensions"]),
                             has_sni=(parsed_hello["sni"] is not None),
+                            ja4_hash=ja4_hash,
+                            ja4_full=ja4_full,
+                        )
+
+                    parsed_server = parse_server_hello(tcp_payload)
+                    if parsed_server is not None:
+                        tls_tracker.add_server_hello(
+                            timestamp=timestamp,
+                            server_ip=ip.src,
+                            client_ip=ip.dst,
+                            ja3s_hash=parsed_server["ja3s_hash"],
+                            cipher_suite=parsed_server["selected_cipher"],
+                            extension_count=len(parsed_server["extensions"]),
+                        )
+
+                    if dst_port in (443, 8443) or src_port in (443, 8443):
+                        tls_tracker.add_splt_packet(
+                            timestamp=timestamp,
+                            src_ip=ip.src,
+                            packet_bytes=len(packet),
                         )
             except Exception:
                 pass
@@ -228,6 +255,26 @@ def process_packet(packet):
             protocol = "UDP"
             src_port = packet[UDP].sport
             dst_port = packet[UDP].dport
+
+            try:
+                udp_payload = bytes(packet[UDP].payload)
+                if (dst_port in (443, 8443) or src_port in (443, 8443)) and udp_payload:
+                    quic_meta = parse_quic_packet(udp_payload)
+                    if quic_meta:
+                        tls_tracker.add_quic_packet(
+                            timestamp=timestamp,
+                            src_ip=ip.src,
+                            dst_ip=ip.dst,
+                            quic_meta=quic_meta,
+                            packet_bytes=len(packet),
+                        )
+                        tls_tracker.add_splt_packet(
+                            timestamp=timestamp,
+                            src_ip=ip.src,
+                            packet_bytes=len(packet),
+                        )
+            except Exception:
+                pass
 
             try:
                 if packet.haslayer(DNS):
@@ -244,10 +291,20 @@ def process_packet(packet):
                         else:
                             domain = str(raw_name)
 
+                        qtype = getattr(first_query, "qtype", 1)
                         dns_tracker.add_query(
                             timestamp=timestamp,
                             src_ip=ip.src,
                             domain=domain,
+                            qtype=qtype,
+                            packet_bytes=len(packet),
+                        )
+                    elif dns_layer.qr == 1:
+                        # DNS Response observed in bidirectional capture
+                        dns_tracker.add_response(
+                            timestamp=timestamp,
+                            src_ip=ip.dst,  # attribute response metadata to client IP
+                            response_bytes=len(packet),
                         )
             except Exception:
                 pass

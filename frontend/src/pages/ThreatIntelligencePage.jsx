@@ -17,6 +17,8 @@ export function ThreatIntelligencePage({ activeAlerts, history }) {
   // Threat Definitions & Data for Recharts
   const threatDefinitions = [
     { type: "SYN_FLOOD", label: "SYN Flood" },
+    { type: "UDP_FLOOD", label: "UDP Flood" },
+    { type: "DISTRIBUTED_UDP_FLOOD", label: "Distributed UDP Flood" },
     { type: "PORT_SCAN", label: "Port Scanning" },
     { type: "C2_BEACONING", label: "C2 Beaconing" },
     { type: "DGA_DNS_TUNNELLING", label: "DGA / DNS Tunnelling" },

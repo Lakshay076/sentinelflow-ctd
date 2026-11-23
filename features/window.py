@@ -1,5 +1,6 @@
+import math
 from dataclasses import dataclass, field
-from typing import Dict, Set
+from typing import Dict, Set, Tuple
 
 
 @dataclass
@@ -29,6 +30,9 @@ class ObservationWindow:
     tcp_packets: int = 0
     udp_packets: int = 0
     icmp_packets: int = 0
+    tcp_bytes: int = 0
+    udp_bytes: int = 0
+    icmp_bytes: int = 0
 
     # TCP flags
     tcp_syn: int = 0
@@ -45,6 +49,8 @@ class ObservationWindow:
     source_ips: Set[str] = field(default_factory=set)
     destination_ips: Set[str] = field(default_factory=set)
     destination_ports: Set[int] = field(default_factory=set)
+    source_counts: Dict[str, int] = field(default_factory=dict)
+    udp_source_counts: Dict[str, int] = field(default_factory=dict)
 
     # Bidirectional flows
     flows: Set[str] = field(default_factory=set)
@@ -78,6 +84,7 @@ class ObservationWindow:
         # --------------------------------------------------
 
         self.source_ips.add(src_ip)
+        self.source_counts[src_ip] = self.source_counts.get(src_ip, 0) + 1
         self.destination_ips.add(dst_ip)
 
         if dst_port:
@@ -96,6 +103,7 @@ class ObservationWindow:
         if protocol == "TCP":
 
             self.tcp_packets += 1
+            self.tcp_bytes += packet_bytes
 
             if tcp_syn:
                 self.tcp_syn += 1
@@ -109,10 +117,13 @@ class ObservationWindow:
         elif protocol == "UDP":
 
             self.udp_packets += 1
+            self.udp_bytes += packet_bytes
+            self.udp_source_counts[src_ip] = self.udp_source_counts.get(src_ip, 0) + 1
 
         elif protocol == "ICMP":
 
             self.icmp_packets += 1
+            self.icmp_bytes += packet_bytes
 
         # --------------------------------------------------
         # Determine packet direction
@@ -208,6 +219,13 @@ class ObservationWindow:
         syn_rate = self.tcp_syn / duration
         rst_rate = self.tcp_rst / duration
 
+        source_entropy, normalized_source_entropy = self._calculate_shannon_entropy(
+            self.source_counts
+        )
+        udp_entropy, normalized_udp_entropy = self._calculate_shannon_entropy(
+            self.udp_source_counts
+        )
+
         # --------------------------------------------------
         # Feature vector
         # --------------------------------------------------
@@ -250,6 +268,12 @@ class ObservationWindow:
             "tcp_packets": self.tcp_packets,
             "udp_packets": self.udp_packets,
             "icmp_packets": self.icmp_packets,
+            "tcp_bytes": self.tcp_bytes,
+            "udp_bytes": self.udp_bytes,
+            "icmp_bytes": self.icmp_bytes,
+            "udp_rate": self.udp_packets / duration,
+            "udp_bytes_per_second": self.udp_bytes / duration,
+            "udp_packet_ratio": self.udp_packets / max(self.packets, 1),
 
             # TCP behavior
             "tcp_syn": self.tcp_syn,
@@ -259,16 +283,40 @@ class ObservationWindow:
             "syn_rate": syn_rate,
             "rst_rate": rst_rate,
 
-            # Diversity
+            # Diversity & Entropy
             "unique_sources": len(self.source_ips),
             "unique_destinations": len(self.destination_ips),
-
             "unique_destination_ports": (
                 len(self.destination_ports)
             ),
-
             "active_flows": len(self.flows),
+            "source_ip_entropy": source_entropy,
+            "normalized_source_entropy": normalized_source_entropy,
+            "udp_sources": len(self.udp_source_counts),
+            "udp_source_entropy": udp_entropy,
+            "udp_normalized_entropy": normalized_udp_entropy,
+            "mean_packets_per_source": self.packets / max(len(self.source_ips), 1),
+            "mean_udp_packets_per_source": self.udp_packets / max(len(self.udp_source_counts), 1),
         }
+
+    @staticmethod
+    def _calculate_shannon_entropy(counts: Dict[str, int]) -> Tuple[float, float]:
+        if not counts:
+            return 0.0, 0.0
+        total = sum(counts.values())
+        if total <= 0:
+            return 0.0, 0.0
+        k = len(counts)
+        if k <= 1:
+            return 0.0, 0.0
+        entropy = 0.0
+        for count in counts.values():
+            if count > 0:
+                p = count / total
+                entropy -= p * math.log2(p)
+        max_entropy = math.log2(k)
+        normalized = entropy / max_entropy if max_entropy > 0 else 0.0
+        return entropy, normalized
 
 
 class WindowManager:

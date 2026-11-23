@@ -21,6 +21,8 @@ class IncidentCorrelator:
 
     KNOWN_ATTACK_TYPES = {
         "SYN_FLOOD",
+        "UDP_FLOOD",
+        "DISTRIBUTED_UDP_FLOOD",
         "PORT_SCAN",
         "C2_BEACONING",
         "DGA_DNS_TUNNELLING",

@@ -13,6 +13,8 @@ Tests all detectors against simulated normal and attack feature profiles:
 
 from detectors.scan_detector import detect_port_scan
 from detectors.syn_flood_detector import detect_syn_flood
+from detectors.udp_flood_detector import detect_udp_flood
+from detectors.network_entropy_detector import detect_distributed_udp_flood
 from detectors.exfiltration_detector import detect_exfiltration
 from detectors.beacon_detector import detect_c2_beaconing
 from detectors.dga_detector import detect_dga_dns
@@ -22,26 +24,38 @@ from features.feature_context import FeatureContext
 
 
 def test_port_scan():
-    print("\n[1] Testing PORT SCAN Detector...")
+    print("\n[1] Testing PORT SCAN Detector (Vertical & Horizontal)...")
     normal = {
         "unique_destination_ports": 1,
+        "unique_destinations": 1,
         "active_flows": 1,
         "syn_packet_ratio": 0.1,
         "flows_per_second": 1.0,
     }
-    attack = {
+    vertical_attack = {
         "unique_destination_ports": 12,
+        "unique_destinations": 1,
         "active_flows": 12,
         "syn_packet_ratio": 0.9,
         "flows_per_second": 12.0,
     }
+    horizontal_attack = {
+        "unique_destination_ports": 1,
+        "unique_destinations": 20,
+        "active_flows": 20,
+        "syn_packet_ratio": 0.95,
+        "flows_per_second": 20.0,
+    }
     res_normal = detect_port_scan(normal)
-    res_attack = detect_port_scan(attack)
+    res_vertical = detect_port_scan(vertical_attack)
+    res_horizontal = detect_port_scan(horizontal_attack)
 
     assert not res_normal.detected, "Normal traffic incorrectly flagged as port scan"
-    assert res_attack.detected and res_attack.attack_type == "PORT_SCAN", "Port scan failed to detect"
+    assert res_vertical.detected and res_vertical.attack_type == "PORT_SCAN", "Vertical port scan failed to detect"
+    assert res_horizontal.detected and res_horizontal.attack_type == "PORT_SCAN", "Horizontal port scan failed to detect"
     print(f"  ✓ Normal: detected={res_normal.detected}")
-    print(f"  ✓ Attack: detected={res_attack.detected}, severity={res_attack.severity}, confidence={res_attack.confidence}")
+    print(f"  ✓ Vertical: detected={res_vertical.detected}, severity={res_vertical.severity}, confidence={res_vertical.confidence}")
+    print(f"  ✓ Horizontal: detected={res_horizontal.detected}, severity={res_horizontal.severity}, confidence={res_horizontal.confidence}")
 
 
 def test_syn_flood():
@@ -61,6 +75,68 @@ def test_syn_flood():
 
     assert not res_normal.detected, "Normal traffic incorrectly flagged as SYN flood"
     assert res_attack.detected and res_attack.attack_type == "SYN_FLOOD", "SYN flood failed to detect"
+    print(f"  ✓ Normal: detected={res_normal.detected}")
+    print(f"  ✓ Attack: detected={res_attack.detected}, severity={res_attack.severity}, confidence={res_attack.confidence}")
+
+
+def test_udp_flood():
+    print("\n[3] Testing UDP FLOOD Detector...")
+    normal = {
+        "udp_packets": 5,
+        "packets": 50,
+        "udp_rate": 5.0,
+        "udp_packet_ratio": 0.10,
+        "bytes_per_second": 2_000.0,
+        "unique_destination_ports": 1,
+    }
+    attack = {
+        "udp_packets": 300,
+        "packets": 300,
+        "udp_rate": 300.0,
+        "udp_packet_ratio": 1.0,
+        "bytes_per_second": 150_000.0,
+        "unique_destination_ports": 1,
+        "destination_ports": {53},
+        "flows_per_second": 50.0,
+    }
+    res_normal = detect_udp_flood(normal)
+    res_attack = detect_udp_flood(attack)
+
+    assert not res_normal.detected, "Normal traffic incorrectly flagged as UDP flood"
+    assert res_attack.detected and res_attack.attack_type == "UDP_FLOOD", "UDP flood failed to detect"
+    print(f"  ✓ Normal: detected={res_normal.detected}")
+    print(f"  ✓ Attack: detected={res_attack.detected}, severity={res_attack.severity}, confidence={res_attack.confidence}")
+
+
+def test_distributed_udp_flood():
+    print("\n[4] Testing DISTRIBUTED UDP FLOOD (Entropy) Detector...")
+    normal = {
+        "packets": 40,
+        "udp_packets": 20,
+        "udp_rate": 20.0,
+        "bytes_per_second": 8_000.0,
+        "unique_sources": 3,
+        "source_ip_entropy": 1.5,
+        "normalized_source_entropy": 0.94,
+        "mean_packets_per_source": 6.67,
+        "udp_packet_ratio": 0.50,
+    }
+    attack = {
+        "packets": 350,
+        "udp_packets": 350,
+        "udp_rate": 350.0,
+        "bytes_per_second": 180_000.0,
+        "unique_sources": 50,
+        "source_ip_entropy": 5.64,
+        "normalized_source_entropy": 0.99,
+        "mean_packets_per_source": 7.0,
+        "udp_packet_ratio": 1.0,
+    }
+    res_normal = detect_distributed_udp_flood(normal)
+    res_attack = detect_distributed_udp_flood(attack)
+
+    assert not res_normal.detected, "Normal traffic incorrectly flagged as distributed UDP flood"
+    assert res_attack.detected and res_attack.attack_type == "DISTRIBUTED_UDP_FLOOD", "Distributed UDP flood failed to detect"
     print(f"  ✓ Normal: detected={res_normal.detected}")
     print(f"  ✓ Attack: detected={res_attack.detected}, severity={res_attack.severity}, confidence={res_attack.confidence}")
 
@@ -203,6 +279,8 @@ def main():
 
     test_port_scan()
     test_syn_flood()
+    test_udp_flood()
+    test_distributed_udp_flood()
     test_exfiltration()
     test_c2_beaconing()
     test_dga_dns()
