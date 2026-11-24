@@ -4,6 +4,7 @@ from api.routes.alerts import router as alerts_router
 from api.routes.pcap import router as pcap_router
 from alerts.alert_store import AlertStore
 from api.routes.metrics import router as metrics_router
+from api.routes.stream import router as stream_router
 
 app = FastAPI(
     title="CTD — Cyber Threat Detection API",
@@ -24,6 +25,7 @@ app.add_middleware(
 app.include_router(alerts_router)
 app.include_router(pcap_router)
 app.include_router(metrics_router)
+app.include_router(stream_router)
 
 @app.get("/")
 def root():

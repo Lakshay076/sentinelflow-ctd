@@ -1,43 +1,130 @@
-# Python
+# ==========================================
+# Python & Bytecode
+# ==========================================
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Virtual environment
+# ==========================================
+# Testing & Code Quality
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# ==========================================
+# Virtual Environments
+# ==========================================
 .venv/
 venv/
 env/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Environment variables / secrets
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
 .env
 .env.*
 !.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# PostgreSQL / local data
+# ==========================================
+# Databases & Local Runtime Stores
+# ==========================================
 *.db
+*.db-journal
 *.sqlite
 *.sqlite3
+*.sqlite3-journal
+ctd_alerts.db
+ctd_metrics.db
 
-# Node
+# ==========================================
+# Frontend (React / Vite / Node)
+# ==========================================
+node_modules/
 frontend/node_modules/
 frontend/dist/
+dist/
+.vite/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Editors
-.vscode/
-.idea/
-
-# Backups
-*.backup
-*.bak
-
-# Local packet captures
+# ==========================================
+# Network Captures & Replay PCAPs
+# ==========================================
+# Ignore dynamically generated/temporary packet captures
+*.pcap.tmp
+*.pcapng.tmp
 data/*.pcap
 data/*.pcapng
+scratch/
+
+# Preserve shipped demo & benchmark dataset files
+!demo.pcap
+!demo.pcap.ground_truth.json
+!benign.pcap
+!benign.pcap.ground_truth.json
+
+# ==========================================
+# Logs & Diagnostic Dumps
+# ==========================================
+*.log
+logs/
+*.pid
+
+# ==========================================
+# Operating System Artifacts
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# IDEs & Text Editors
+# ==========================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from alerts.alert_record import AlertRecord
 from alerts.alert_store import AlertStore
 from detectors.detection_result import DetectionResult
+from telemetry.ipc_client import ipc_client
 
 
 class AlertManager:
@@ -124,6 +125,8 @@ class AlertManager:
                     responder_ips=responder_ips,
                     related_flows=related_flows,
                 )
+                if alert is not None:
+                    ipc_client.publish_alert_created(alert.to_dict())
 
             else:
 
@@ -143,6 +146,7 @@ class AlertManager:
                     continue
 
                 alert = updated_alert
+                ipc_client.publish_alert_updated(alert.to_dict())
 
             active_alerts.append(alert)
 
@@ -176,6 +180,7 @@ class AlertManager:
 
                 if resolved_alert is not None:
                     resolved.append(resolved_alert)
+                    ipc_client.publish_alert_resolved(resolved_alert.to_dict())
 
         return resolved
 

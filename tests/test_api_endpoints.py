@@ -43,6 +43,7 @@ def test_simulate_all_attacks():
     attacks = [
         "PORT_SCAN",
         "SYN_FLOOD",
+        "UDP_FLOOD",
         "C2_BEACONING",
         "DGA_DNS_TUNNELLING",
         "TLS_METADATA_ANOMALY",
