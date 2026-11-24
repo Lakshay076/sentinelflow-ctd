@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from alerts.alert_store import AlertStore
+from api.routes.stream import stream_manager
 
 
 router = APIRouter(
@@ -107,6 +108,11 @@ def resolve_all_alerts():
         res = store.resolve(alert.alert_id, timestamp=now)
         if res:
             resolved_count += 1
+            stream_manager.broadcast_sync({
+                "event_type": "ALERT_RESOLVED",
+                "data": res.to_dict(),
+                "window_timestamp": now,
+            })
 
     return {
         "status": "success",
@@ -128,6 +134,11 @@ def clear_alert_history():
 @router.delete("/all")
 def clear_all_alerts():
     cleared_count = store.clear_all()
+    stream_manager.broadcast_sync({
+        "event_type": "ALERTS_CLEARED",
+        "data": {"cleared_count": cleared_count},
+        "window_timestamp": time.time(),
+    })
     return {
         "status": "success",
         "cleared_count": cleared_count,

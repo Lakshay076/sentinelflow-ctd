@@ -64,6 +64,11 @@ function App() {
     latest: null,
     history: [],
   });
+  const [streamConnected, setStreamConnected] = useState(false);
+  const [streamLatency, setStreamLatency] = useState({
+    deliveryMs: null,
+    detectionMs: null,
+  });
 
   const [health, setHealth] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -410,9 +415,165 @@ PY`,
   }
 
   useEffect(() => {
+    // 1. Initial snapshot fetch via REST
     fetchData();
-    const interval = setInterval(fetchData, 4000);
-    return () => clearInterval(interval);
+
+    let socket = null;
+    let pollInterval = null;
+    let reconnectTimeout = null;
+    let isUnmounted = false;
+
+    function startPollingFallback() {
+      if (!pollInterval) {
+        console.log("[Stream] Active fallback: polling API every 4000ms");
+        pollInterval = setInterval(fetchData, 4000);
+      }
+    }
+
+    function stopPollingFallback() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
+    function connectWebSocket() {
+      if (isUnmounted) return;
+
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      let host = window.location.host;
+      if (API_BASE && API_BASE.startsWith("http")) {
+        try {
+          const u = new URL(API_BASE);
+          host = u.host;
+        } catch (_) {}
+      } else if (API_BASE && !API_BASE.startsWith("http")) {
+        host = API_BASE.replace(/^\/+/, "");
+      }
+      const wsUrl = `${wsProtocol}//${host}/ws/live`;
+
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch (err) {
+        console.warn("[Stream] Failed to instantiate WebSocket:", err);
+        setStreamConnected(false);
+        startPollingFallback();
+        reconnectTimeout = setTimeout(connectWebSocket, 4000);
+        return;
+      }
+
+      socket.onopen = () => {
+        if (isUnmounted) return;
+        console.log("[Stream] WebSocket connected to CTD engine");
+        setStreamConnected(true);
+        stopPollingFallback();
+      };
+
+      socket.onmessage = (msgEvent) => {
+        if (isUnmounted) return;
+        try {
+          const event = JSON.parse(msgEvent.data);
+          const nowSec = Date.now() / 1000;
+
+          // Compute measured latencies (separate delivery transit vs window interval)
+          const deliveryMs = event.dispatched_at
+            ? Math.max(0, Math.round((nowSec - event.dispatched_at) * 1000))
+            : null;
+
+          const detectionMs = event.window_timestamp
+            ? Math.max(0, Math.round((nowSec - event.window_timestamp) * 1000))
+            : null;
+
+          if (deliveryMs !== null || detectionMs !== null) {
+            setStreamLatency({ deliveryMs, detectionMs });
+          }
+
+          if (event.event_type === "TELEMETRY_WINDOW") {
+            const metrics = event.data;
+            setLiveMetrics((prev) => ({
+              latest: metrics,
+              history: [...(prev.history || []).slice(-59), metrics],
+            }));
+            setLastUpdated(new Date());
+          } else if (event.event_type === "ALERT_CREATED") {
+            const newAlert = event.data;
+            setActiveAlerts((prev) => {
+              if (prev.some((a) => a.alert_id === newAlert.alert_id)) {
+                return prev.map((a) => (a.alert_id === newAlert.alert_id ? newAlert : a));
+              }
+              return [newAlert, ...prev];
+            });
+            setStats((prev) => ({
+              ...prev,
+              total_alerts: (prev?.total_alerts || 0) + 1,
+              active_alerts: (prev?.active_alerts || 0) + 1,
+              attack_types: {
+                ...(prev?.attack_types || {}),
+                [newAlert.attack_type]: ((prev?.attack_types || {})[newAlert.attack_type] || 0) + 1,
+              },
+            }));
+            setLastUpdated(new Date());
+          } else if (event.event_type === "ALERT_UPDATED") {
+            const updatedAlert = event.data;
+            setActiveAlerts((prev) =>
+              prev.map((a) => (a.alert_id === updatedAlert.alert_id ? updatedAlert : a))
+            );
+            setLastUpdated(new Date());
+          } else if (event.event_type === "ALERT_RESOLVED") {
+            const resolvedAlert = event.data;
+            setActiveAlerts((prev) => prev.filter((a) => a.alert_id !== resolvedAlert.alert_id));
+            setHistory((prev) => {
+              if (prev.some((a) => a.alert_id === resolvedAlert.alert_id)) {
+                return prev.map((a) => (a.alert_id === resolvedAlert.alert_id ? resolvedAlert : a));
+              }
+              return [resolvedAlert, ...prev];
+            });
+            setStats((prev) => ({
+              ...prev,
+              active_alerts: Math.max(0, (prev?.active_alerts || 1) - 1),
+              resolved_alerts: (prev?.resolved_alerts || 0) + 1,
+            }));
+            setLastUpdated(new Date());
+          } else if (event.event_type === "ALERTS_CLEARED") {
+            setActiveAlerts([]);
+            setHistory([]);
+            setStats((prev) => ({
+              ...prev,
+              total_alerts: 0,
+              active_alerts: 0,
+              resolved_alerts: 0,
+              attack_types: {},
+            }));
+            setLastUpdated(new Date());
+          }
+        } catch (parseErr) {
+          console.warn("[Stream] Failed to parse message:", parseErr);
+        }
+      };
+
+      socket.onclose = () => {
+        if (isUnmounted) return;
+        console.warn("[Stream] WebSocket disconnected. Falling back to HTTP polling...");
+        setStreamConnected(false);
+        startPollingFallback();
+        reconnectTimeout = setTimeout(connectWebSocket, 4000);
+      };
+
+      socket.onerror = () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
+      };
+    }
+
+    connectWebSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (pollInterval) clearInterval(pollInterval);
+      if (socket) socket.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -619,6 +780,22 @@ PY`,
           </span>
         </div>
 
+        <div
+          className="system-status stream-status"
+          title={
+            streamConnected
+              ? `Real-Time WebSocket Stream Connected. Transit Delivery Latency: ${streamLatency.deliveryMs ?? "—"}ms`
+              : "WebSocket Disconnected. Automatic 4-Second HTTP Polling Fallback Active."
+          }
+        >
+          <span className={`status-dot ${streamConnected ? "healthy" : "warning"}`} />
+          <span>
+            {streamConnected
+              ? `WS STREAM${streamLatency.deliveryMs !== null ? ` (${streamLatency.deliveryMs}ms)` : ""}`
+              : "POLL FALLBACK"}
+          </span>
+        </div>
+
         <button
           className="theme-toggle"
           onClick={() => setTheme(theme === "light" ? "dark" : "light")}
@@ -665,6 +842,8 @@ PY`,
               <LiveMonitoringPage
                 liveMetrics={liveMetrics}
                 activeAlerts={activeAlerts}
+                streamConnected={streamConnected}
+                streamLatency={streamLatency}
               />
             )}
             {currentPage === "incidents" && (

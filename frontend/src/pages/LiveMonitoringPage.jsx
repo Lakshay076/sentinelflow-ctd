@@ -5,7 +5,12 @@ import { formatAttackType } from "../utils";
 import { LiveTrafficChart } from "../components/LiveTrafficChart";
 import { Reveal } from "../components/Reveal";
 
-export function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
+export function LiveMonitoringPage({
+  liveMetrics,
+  activeAlerts,
+  streamConnected = false,
+  streamLatency = { deliveryMs: null, detectionMs: null },
+}) {
   const latest = liveMetrics?.latest;
   const points = liveMetrics?.history || [];
 
@@ -36,13 +41,30 @@ export function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
 
         <div className="live-page-status">
           <span
-            className={`status-dot ${!isStale && displayLatest ? "healthy" : "offline"}`}
+            className={`status-dot ${
+              !isStale && displayLatest
+                ? streamConnected
+                  ? "healthy"
+                  : "warning"
+                : "offline"
+            }`}
           />
           <div>
             <strong>
-              {!isStale && displayLatest ? "LIVE TELEMETRY" : (isStale ? "TELEMETRY STALE" : "WAITING FOR TELEMETRY")}
+              {!isStale && displayLatest
+                ? streamConnected
+                  ? "WEBSOCKET STREAM ACTIVE"
+                  : "LIVE (POLLING FALLBACK)"
+                : isStale
+                ? "TELEMETRY STALE"
+                : "WAITING FOR TELEMETRY"}
             </strong>
-            <span>1-second observation windows</span>
+            <span>
+              1-second windows
+              {streamConnected && streamLatency?.deliveryMs !== null
+                ? ` • Delivery: ${streamLatency.deliveryMs}ms • Interval: ${streamLatency.detectionMs ?? "—"}ms`
+                : ""}
+            </span>
           </div>
         </div>
       </div>

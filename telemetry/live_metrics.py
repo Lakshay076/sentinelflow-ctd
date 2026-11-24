@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from typing import Dict, List, Optional
+from telemetry.ipc_client import ipc_client
 
 try:
     from dotenv import load_dotenv
@@ -226,6 +227,13 @@ class LiveMetricsStore:
                 conn.commit()
         except Exception as exc:
             print(f"[LIVE METRICS] SQLite write failed: {exc}")
+
+        window_dict = self._row_to_dict(params)
+        try:
+            ipc_client.publish_telemetry_window(window_dict)
+        except Exception:
+            pass
+        return window_dict
 
 
     def latest(self) -> Optional[Dict]:
