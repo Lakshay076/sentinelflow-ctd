@@ -6,7 +6,7 @@
 |---|---|---|
 | `collector/packet_collector.py` sniffs a live NIC (`en0`) | `collector/pcap_replay_collector.py` reads a `.pcap` file | A live NIC is bidirectional and can send. A file on disk cannot send anything, ever — it's the software equivalent of a hardware data diode: physically read-only. |
 | Traffic = one laptop's own packets | Traffic = a multi-host `.pcap` you feed in (real capture, public dataset, or `scripts/generate_synthetic_traffic.py`) | The SIH scenario is a gateway/peering link carrying MANY hosts' traffic, not one machine's own packets. |
-| `inference/train_model.py` trains on invented statistical distributions | `inference/train_model_from_pcap.py` trains on real feature vectors produced by replaying an actual benign pcap through the live pipeline | Training features must be computed the same way as inference features, from real traffic shape, or the learned "normal" baseline doesn't match reality. |
+| Older synthetic training approach | `inference/train_model_from_pcap.py` replays a verified benign PCAP through the live feature pipeline | Training is explicit and no live observations are fed back into the baseline automatically. |
 | No stated throughput | `pcap_replay_collector.py` prints sustained pps / Mbps / flows-per-second after every run | The SIH deliverable explicitly requires you to state and demonstrate a tested throughput. |
 
 Nothing in the detection core changed: `flow/`, `features/`, `detectors/`, `alerts/`, `api/`, `frontend/` are untouched. Only the packet *source* and the model's *training data source* changed — which is exactly the right amount of change, since the detection logic already matches the SIH's required threat list.

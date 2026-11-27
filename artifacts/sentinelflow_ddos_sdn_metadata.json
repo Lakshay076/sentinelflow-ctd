@@ -1,0 +1,65 @@
+{
+  "model_name": "XGBoost",
+  "threshold": 0.8875058889389038,
+  "feature_columns": [
+    "pktcount",
+    "bytecount",
+    "dur",
+    "dur_nsec",
+    "flows",
+    "pktperflow",
+    "byteperflow",
+    "pktrate",
+    "tx_bytes",
+    "rx_bytes",
+    "tx_kbps",
+    "rx_kbps",
+    "tot_kbps",
+    "Protocol"
+  ],
+  "numeric_features": [
+    "pktcount",
+    "bytecount",
+    "dur",
+    "dur_nsec",
+    "flows",
+    "pktperflow",
+    "byteperflow",
+    "pktrate",
+    "tx_bytes",
+    "rx_bytes",
+    "tx_kbps",
+    "rx_kbps",
+    "tot_kbps"
+  ],
+  "categorical_features": [
+    "Protocol"
+  ],
+  "label_mapping": {
+    "0": "benign",
+    "1": "malicious"
+  },
+  "dataset": "DDoS SDN dataset (dataset_sdn.csv)",
+  "split_strategy": "chronological unique-dt split: 70% train / 15% validation / 15% test",
+  "duplicate_rows_removed": 5091,
+  "test_metrics": {
+    "selected_model": "XGBoost",
+    "threshold": 0.8875058889389038,
+    "accuracy": 0.9288645690834473,
+    "balanced_accuracy": 0.8891097499382166,
+    "precision_malicious": 0.977079482439926,
+    "recall_malicious": 0.7863731032430824,
+    "f1_malicious": 0.8714144411473789,
+    "specificity_benign": 0.9918463966333508,
+    "false_positive_rate": 0.008153603366649132,
+    "roc_auc": 0.994669884357518,
+    "average_precision": 0.9871675202937911
+  },
+  "live_feature_parity_validated": false,
+  "created_utc": "2026-11-27T00:13:48.583391+00:00",
+  "notes": [
+    "Binary benign/malicious classifier; does not identify DDoS subtypes or the other five SentinelFlow threat categories.",
+    "Dataset originates from an emulated SDN environment.",
+    "Live feature parity has not been validated; do not deploy until feature definitions, units and directionality match."
+  ]
+}

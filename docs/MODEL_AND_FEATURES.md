@@ -92,24 +92,50 @@ for the exact list and default ("no signal / normal")
 values used when a feature isn't available for a given
 source in a given window.
 
-**Training approach — IMPORTANT HONESTY NOTE:**
-The current training data (`inference/train_model.py`,
-`generate_synthetic_normal_data()`) is **synthetic** —
-reasonable made-up numbers shaped like normal traffic, not
-real captured traffic from your own network. This is a
-clearly-labeled placeholder so the ML layer is functional
-and demonstrable immediately.
+**Training approach:**
+Training is explicit and does not run during application
+startup or from observed live traffic. The trainer replays a
+user-provided PCAP through the same flow, window, source,
+beacon, DNS, and TLS trackers used by live inference, then
+fits a 16-input Isolation Forest and writes
+`inference/model.joblib` plus `inference/feature_stats.json`.
 
-**Before a final submission**, replace the synthetic data
-with a baseline built from your own recorded normal
-traffic:
-1. Run the packet collector during ordinary, attack-free
-   usage for a while (e.g. an hour of normal browsing).
-2. Save the resulting combined feature vectors (one row per
-   source per window) to a CSV.
-3. Load that CSV in `train_model.py` instead of calling
-   `generate_synthetic_normal_data()`.
-4. Re-run training and re-check the sanity-check output.
+Use only a capture that is verified to contain benign-only
+traffic. Synthetic traffic may be used for smoke tests, but
+must not be represented as real-world benign training evidence.
+
+```bash
+python -m inference.train_model_from_pcap /path/to/verified-benign.pcap
+python -m inference.train_model_from_pcap /path/to/verified-benign.pcap --contamination 0.03 --max-packets 100000
+```
+
+**Missing TLS observations:** no-ClientHello observations use
+`tls_avg_cipher_count=20.0`, `tls_avg_extension_count=20.0`,
+and `tls_missing_sni_ratio=0.0`. These values describe the
+no-observation/baseline case; `999.0` is never used as an
+inferred TLS measurement.
+
+**Model loading:** inference loads the model and statistics
+atomically after validating the 16 feature count, all expected
+feature keys, numeric statistics, and `predict`/
+`decision_function` methods. Missing or incompatible artifacts
+disable only the ML detector; rule-based detectors continue.
+
+**Retraining deployment requirement:** the trainer currently
+writes `model.joblib` and `feature_stats.json` separately. It does
+not write or publish them as one transaction. Until paired artifact
+writing and loading are made transactional, stop the application
+before retraining and replace neither file while inference is
+running. The application performs no automatic retraining or
+continuous learning.
+
+**Anomaly score and confidence:** Isolation Forest
+`decision_function()` is a relative anomaly score, while the
+existing `confidence` field is only a heuristic linear display
+scale (`-raw_score / 0.20`, bounded to 0.3-1.0). It is not a
+calibrated probability of attack. HIGH/MEDIUM/LOW mappings
+at 0.75/0.50 are display heuristics and have not been validated
+as calibrated severity categories.
 
 **Validation approach:** replay labeled attack traffic (for
 example, from a public dataset such as CIC-IDS2017, or your
@@ -138,7 +164,7 @@ deterministically.
 | Explainability | Very high — exact thresholds | Medium — top deviating features shown, but the model itself is a black box |
 | Catches known, precise patterns | Yes, reliably | Sometimes, not guaranteed |
 | Catches unusual combinations spread across many features | No | Yes |
-| Needs training data | No | Yes (currently synthetic — see above) |
+| Needs training data | No | Yes; explicit verified-benign PCAP training |
 | Demo-friendly ("why was this flagged?") | Very demo-friendly | Demo-friendly with the z-score explanation feature |
 
 Running both means a source can be caught either because it

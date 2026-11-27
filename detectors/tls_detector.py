@@ -114,8 +114,8 @@ def detect_tls_anomaly(
     reasons = []
     score = 0
 
-    avg_cipher_count = features.get("tls_avg_cipher_count", 999.0)
-    avg_extension_count = features.get("tls_avg_extension_count", 999.0)
+    avg_cipher_count = features.get("tls_avg_cipher_count", 20.0)
+    avg_extension_count = features.get("tls_avg_extension_count", 20.0)
     missing_sni_ratio = features.get("tls_missing_sni_ratio", 0.0)
     max_same_ja3 = features.get("tls_max_same_ja3_to_one_dest", 0)
     max_same_ja4 = features.get("tls_max_same_ja4_to_one_dest", 0)

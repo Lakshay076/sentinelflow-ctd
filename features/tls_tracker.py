@@ -220,8 +220,10 @@ class TLSTracker:
                 unique_ja4_count = len(unique_ja4s)
 
             else:
-                avg_cipher_count = 999.0
-                avg_extension_count = 999.0
+                # No ClientHello was observed. This is "not observed",
+                # not an extremely small cipher-suite offer.
+                avg_cipher_count = 20.0
+                avg_extension_count = 20.0
                 missing_sni_ratio = 0.0
                 max_same_ja3_to_one_dest = 0
                 max_same_ja4_to_one_dest = 0

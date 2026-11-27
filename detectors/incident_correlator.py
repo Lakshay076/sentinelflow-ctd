@@ -93,37 +93,79 @@ class IncidentCorrelator:
                 correlated[source_ip] = list(results)
                 continue
 
-            known_results = [
+            # Merge same-type supervised evidence before alert processing so
+            # one source/window produces only one result for that attack.
+            supervised_indices = {
+                index
+                for index, result in enumerate(results)
+                if any(
+                    reason.startswith("[Supervised ML]")
+                    for reason in result.reasons
+                )
+            }
+            consumed_supervised_indices = set()
+            deduplicated_results = []
+
+            for index, result in enumerate(results):
+                if not result.detected or index in supervised_indices:
+                    continue
+
+                matching_supervised = [
+                    (supervised_index, supervised_result)
+                    for supervised_index, supervised_result in enumerate(results)
+                    if (
+                        supervised_index in supervised_indices
+                        and supervised_index not in consumed_supervised_indices
+                        and supervised_result.detected
+                        and supervised_result.attack_type == result.attack_type
+                    )
+                ]
+
+                if matching_supervised:
+                    supervised_reasons = [
+                        reason
+                        for _, supervised_result in matching_supervised
+                        for reason in supervised_result.reasons
+                        if reason.startswith("[Supervised ML]")
+                    ]
+                    result = self._copy_detection(
+                        result,
+                        supervised_reasons,
+                    )
+                    consumed_supervised_indices.update(
+                        supervised_index
+                        for supervised_index, _ in matching_supervised
+                    )
+
+                deduplicated_results.append(result)
+
+            deduplicated_results.extend(
                 result
-                for result in results
+                for index, result in enumerate(results)
                 if (
                     result.detected
-                    and result.attack_type
-                    in self.KNOWN_ATTACK_TYPES
+                    and index in supervised_indices
+                    and index not in consumed_supervised_indices
                 )
+            )
+
+            known_results = [
+                result
+                for result in deduplicated_results
+                if result.attack_type in self.KNOWN_ATTACK_TYPES
             ]
 
             ml_results = [
                 result
-                for result in results
-                if (
-                    result.detected
-                    and result.attack_type
-                    == self.ML_ATTACK_TYPE
-                )
+                for result in deduplicated_results
+                if result.attack_type == self.ML_ATTACK_TYPE
             ]
 
-            non_ml_results = [
+            output = [
                 result
-                for result in results
-                if (
-                    result.detected
-                    and result.attack_type
-                    != self.ML_ATTACK_TYPE
-                )
+                for result in deduplicated_results
+                if result.attack_type != self.ML_ATTACK_TYPE
             ]
-
-            output = list(non_ml_results)
 
             # ---------------------------------------------------------
             # Overlapping scan + SYN activity

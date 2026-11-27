@@ -68,6 +68,7 @@ pip-delete-this-directory.txt
 *.sqlite3-journal
 ctd_alerts.db
 ctd_metrics.db
+datasets/
 
 # ==========================================
 # Frontend (React / Vite / Node)

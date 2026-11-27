@@ -62,9 +62,8 @@ python -m collector.pcap_replay_collector demo.pcap --max-speed
 # 3. Validate detection accuracy against ground truth manifest
 python scripts/validate_detections.py demo.pcap.ground_truth.json
 
-# 4. Train ML Isolation Forest model on benign PCAP capture
-python scripts/generate_synthetic_traffic.py --out benign.pcap --attacks
-python -m inference.train_model_from_pcap benign.pcap
+# 4. Train only from a verified benign, attack-free PCAP capture
+python -m inference.train_model_from_pcap /path/to/verified-benign.pcap
 ```
 
 ---

@@ -25,6 +25,7 @@ from features.tls_parser import (
     parse_server_hello,
     parse_quic_packet,
 )
+from inference.feature_schema import should_track_beacon_flow
 
 import os
 import sys
@@ -340,7 +341,7 @@ def process_packet(packet):
         # look like beacon check-ins because they repeatedly
         # contact the same resolver at regular intervals.
         # Non-DNS TCP/UDP traffic remains eligible for C2 detection.
-        if is_new_flow and src_port != 53 and dst_port != 53:
+        if should_track_beacon_flow(is_new_flow, src_port, dst_port):
             beacon_tracker.record_new_flow(
                 timestamp=timestamp,
                 src_ip=ip.src,

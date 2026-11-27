@@ -38,6 +38,7 @@ broader, less-defined weirdness.
 
 import json
 import os
+import math
 
 from detectors.detection_result import DetectionResult
 from inference.feature_schema import FEATURE_NAMES, features_to_vector
@@ -62,6 +63,16 @@ STATS_PATH = os.path.join(
 CONFIDENCE_SCALE = 0.20
 MIN_CONFIDENCE_WHEN_DETECTED = 0.3
 
+# Minimum source activity required before the Isolation Forest is evaluated.
+# These thresholds prevent a lone packet, lone flow, or lone DNS query from
+# being sent through the model merely as "data present."
+MIN_PACKETS_PER_SECOND = 5.0
+MIN_BYTES_PER_SECOND = 500.0
+MIN_ACTIVE_FLOWS = 3
+MIN_FLOWS_PER_SECOND = 3.0
+MIN_DNS_QUERIES = 2
+MIN_TLS_CLIENT_HELLOS = 1
+
 
 # Lazy-loaded singletons, so the model file is only read
 # from disk once, the first time it's actually needed.
@@ -80,32 +91,79 @@ def _try_load():
 
     _load_attempted = True
 
-    if not (os.path.exists(MODEL_PATH) and os.path.exists(STATS_PATH)):
-
+    model_available = os.path.exists(MODEL_PATH)
+    stats_available = os.path.exists(STATS_PATH)
+    if not model_available or not stats_available:
         if not _warned_missing:
-
+            missing = []
+            if not model_available:
+                missing.append("model.joblib")
+            if not stats_available:
+                missing.append("feature_stats.json")
             print(
-                "[ML detector] No trained model found yet. "
-                "Rule-based detectors will still run normally. "
-                "To enable the ML layer, run:\n"
-                "  python -m inference.train_model"
+                "[ML detector] Missing artifact(s): "
+                + ", ".join(missing)
+                + ". Rule-based detectors will still run normally."
             )
-
             _warned_missing = True
-
         return
 
+    temp_model = None
+    temp_stats = None
     try:
         import joblib
 
-        _model = joblib.load(MODEL_PATH)
+        temp_model = joblib.load(MODEL_PATH)
 
-        with open(STATS_PATH) as f:
-            _stats = json.load(f)
+        with open(STATS_PATH, "r", encoding="utf-8") as f:
+            temp_stats = json.load(f)
+
+        if not callable(getattr(temp_model, "predict", None)):
+            raise ValueError("Loaded model does not expose predict()")
+        if not callable(getattr(temp_model, "decision_function", None)):
+            raise ValueError("Loaded model does not expose decision_function()")
+
+        n_features = getattr(temp_model, "n_features_in_", None)
+        if n_features is not None and int(n_features) != len(FEATURE_NAMES):
+            raise ValueError(
+                f"Model expects {n_features} features; "
+                f"pipeline provides {len(FEATURE_NAMES)}"
+            )
+
+        if not isinstance(temp_stats, dict):
+            raise ValueError("Feature statistics must be a JSON object")
+        for name in FEATURE_NAMES:
+            entry = temp_stats.get(name)
+            if not isinstance(entry, dict):
+                raise ValueError(f"Missing feature statistics for {name}")
+            mean = entry.get("mean")
+            std = entry.get("std")
+            if isinstance(mean, bool) or isinstance(std, bool):
+                raise ValueError(f"Invalid feature statistics for {name}")
+            try:
+                mean = float(mean)
+                std = float(std)
+            except (TypeError, ValueError):
+                raise ValueError(f"Invalid feature statistics for {name}")
+            if (
+                not math.isfinite(mean)
+                or not math.isfinite(std)
+                or std < 0
+            ):
+                raise ValueError(f"Invalid feature statistics for {name}")
+
+        # Commit only after both artifacts and their compatibility
+        # checks have passed.
+        _model = temp_model
+        _stats = temp_stats
     except Exception as e:
+        # Leave both detector artifacts unavailable so rule-based
+        # detectors remain the only active ML-independent path.
+        _model = None
+        _stats = None
         if not _warned_missing:
             print(
-                f"[ML detector] Could not load model ({e}). "
+                f"[ML detector] Could not load model artifacts ({e}). "
                 "Rule-based detectors will still run normally."
             )
             _warned_missing = True
@@ -123,70 +181,50 @@ def _explain(vector, stats):
     baseline instead.
     """
 
-    deviations = []
-
-    # A standard deviation below this value means the
-    # benign training data was effectively constant for
-    # that feature. In that case, a z-score would be
-    # numerically huge but not useful to an analyst.
+    stable_deviations = []
+    near_constant_deviations = []
     STD_EPSILON = 1e-4
 
     for name, value in zip(FEATURE_NAMES, vector):
-
         mean = stats[name]["mean"]
         std = stats[name]["std"]
+        value = float(value)
+        mean = float(mean)
+        std = float(std)
 
         if std < STD_EPSILON:
-            # Preserve the direction and magnitude of the
-            # deviation without producing misleading z-scores.
-            deviation = abs(value - mean)
-
-            if deviation > 0:
-                deviations.append(
-                    (name, value, None, mean, deviation)
-                )
+            if value != mean:
+                near_constant_deviations.append((name, value, mean))
         else:
             z_score = (value - mean) / std
-            deviations.append(
-                (name, value, z_score, mean, abs(value - mean))
-            )
+            stable_deviations.append((name, value, z_score, mean))
 
-    # Sort stable z-score features by z-score magnitude.
-    # Near-constant features are sorted by absolute deviation.
-    deviations.sort(
-        key=lambda item: (
-            abs(item[2]) if item[2] is not None
-            else item[4]
-        ),
-        reverse=True,
-    )
+    stable_deviations.sort(key=lambda item: abs(item[2]), reverse=True)
 
     reasons = []
 
-    for name, value, z_score, mean, deviation in deviations[:3]:
-
-        if z_score is not None:
-
-            if abs(z_score) < 1.5:
-                continue
-
+    # Stable features are ranked by standardized deviation. Near-constant
+    # features are deliberately kept in a separate list and are reported
+    # afterward in schema order; their raw units are not ranked against
+    # standardized scores or against other near-constant features.
+    for name, value, z_score, mean in stable_deviations:
+        if abs(z_score) >= 1.5:
             direction = "higher" if z_score > 0 else "lower"
-
             reasons.append(
                 f"{name} unusually {direction} than normal "
                 f"(value={value:.2f}, z-score={z_score:.1f})"
             )
+            if len(reasons) == 3:
+                return reasons
 
-        else:
-            # Near-constant baseline: explain the actual
-            # deviation instead of exposing an enormous
-            # meaningless z-score.
-            direction = "higher" if value > mean else "lower"
-
-            reasons.append(
-                f"{name} deviates strongly from normal baseline "
-                f"(value={value:.2f}, baseline={mean:.2f})"
-            )
+    for name, value, mean in near_constant_deviations:
+        direction = "higher" if value > mean else "lower"
+        reasons.append(
+            f"{name} deviates from near-constant baseline "
+            f"(value={value:.2f}, baseline={mean:.2f}; direction={direction})"
+        )
+        if len(reasons) == 3:
+            break
 
     return reasons
 
@@ -210,13 +248,33 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
 
     # Ensure source has performed active traffic before evaluating ML anomaly
     # Idle or trivial background traffic (e.g. 1-2 packets) is not an anomaly
-    packets = features.get("packets", 0)
-    bytes_sent = features.get("bytes", 0)
-    flows = features.get("active_flows", 0)
-    dns_count = features.get("dns_query_count", 0)
-    tls_count = features.get("tls_client_hello_count", 0)
+    def _guard_number(key, default=0):
+        value = features.get(key, default)
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return float(default)
+        return number if math.isfinite(number) else float(default)
 
-    if packets < 5 and bytes_sent < 500 and flows < 3 and dns_count < 2 and tls_count < 1:
+    packets_per_second = _guard_number("packets_per_second")
+    bytes_per_second = _guard_number("bytes_per_second")
+    flows_per_second = _guard_number("flows_per_second")
+    active_flows = _guard_number("active_flows")
+    dns_count = _guard_number("dns_query_count")
+    tls_count = _guard_number("tls_client_hello_count")
+
+    # Missing values remain 0 for this guard only. They are separately
+    # replaced by schema defaults before model evaluation.
+    # An idle guard threshold is intentionally OR'ed across every meaningful
+    # activity signal: a lone packet, flow, or DNS query must not bypass it.
+    if (
+        packets_per_second < MIN_PACKETS_PER_SECOND
+        and bytes_per_second < MIN_BYTES_PER_SECOND
+        and flows_per_second < MIN_FLOWS_PER_SECOND
+        and active_flows < MIN_ACTIVE_FLOWS
+        and dns_count < MIN_DNS_QUERIES
+        and tls_count < MIN_TLS_CLIENT_HELLOS
+    ):
         return DetectionResult(
             detected=False,
             attack_type=None,
@@ -245,8 +303,8 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
             reasons=[],
         )
 
-    # Convert the raw score into a friendlier 0-1 confidence.
-    # More negative raw_score = more anomalous.
+    # Heuristic 0-1 anomaly-confidence display scale. This is not a
+    # calibrated probability and should not be interpreted as P(attack).
     confidence = float(min(
         1.0,
         max(
@@ -293,11 +351,19 @@ if __name__ == "__main__":
         "packets_per_second": 3.0,
         "bytes_per_second": 500.0,
         "syn_packet_ratio": 0.05,
+        "rst_packet_ratio": 0.0,
         "unique_destinations": 2,
         "unique_destination_ports": 2,
         "active_flows": 2,
         "flows_per_second": 2.0,
+        "ports_per_destination": 1.0,
+        "bytes_received": 2500.0,
         "outbound_inbound_ratio": 0.2,
+        "beacon_interval_cv": 1.0,
+        "dns_high_entropy_ratio": 0.0,
+        "dns_queries_per_second": 0.0,
+        "tls_avg_cipher_count": 20.0,
+        "tls_missing_sni_ratio": 0.0,
     }
 
     print()
@@ -309,11 +375,19 @@ if __name__ == "__main__":
         "packets_per_second": 400.0,
         "bytes_per_second": 900.0,
         "syn_packet_ratio": 0.95,
+        "rst_packet_ratio": 0.0,
         "unique_destinations": 60,
         "unique_destination_ports": 60,
         "active_flows": 60,
         "flows_per_second": 60.0,
+        "ports_per_destination": 1.0,
+        "bytes_received": 900.0,
         "outbound_inbound_ratio": 5.0,
+        "beacon_interval_cv": 0.01,
+        "dns_high_entropy_ratio": 0.95,
+        "dns_queries_per_second": 20.0,
+        "tls_avg_cipher_count": 2.0,
+        "tls_missing_sni_ratio": 1.0,
     }
 
     print()

@@ -1,3 +1,5 @@
+import math
+
 """
 CTD — ML Feature Schema
 
@@ -73,6 +75,20 @@ DEFAULT_VALUES = {
 }
 
 
+def is_dns_flow(src_port: int = 0, dst_port: int = 0) -> bool:
+    """Return whether a flow uses port 53 in either direction."""
+    return int(src_port or 0) == 53 or int(dst_port or 0) == 53
+
+
+def should_track_beacon_flow(
+    is_new_flow: bool,
+    src_port: int = 0,
+    dst_port: int = 0,
+) -> bool:
+    """Shared DNS exclusion policy for C2 beacon connection tracking."""
+    return bool(is_new_flow) and not is_dns_flow(src_port, dst_port)
+
+
 def features_to_vector(features: dict) -> list:
     """
     Convert a (possibly incomplete) feature dictionary into
@@ -80,7 +96,16 @@ def features_to_vector(features: dict) -> list:
     filling in sensible defaults for anything missing.
     """
 
-    return [
-        features.get(name, DEFAULT_VALUES[name])
-        for name in FEATURE_NAMES
-    ]
+    vector = []
+    for name in FEATURE_NAMES:
+        value = features.get(name)
+        if value is None:
+            value = DEFAULT_VALUES[name]
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            value = float(DEFAULT_VALUES[name])
+        if not math.isfinite(value):
+            value = float(DEFAULT_VALUES[name])
+        vector.append(value)
+    return vector

@@ -37,7 +37,11 @@ from features.feature_context import FeatureContext
 
 class DetectorEngine:
 
-    def __init__(self, use_ml: bool = True):
+    def __init__(
+        self,
+        use_ml: bool = True,
+        use_supervised_ml: bool = True,
+    ):
 
         # ---------------------------------------------
         # Source-level detectors.
@@ -82,6 +86,14 @@ class DetectorEngine:
 
             self.source_detectors.append(
                 detect_ml_anomaly
+            )
+
+        if use_supervised_ml:
+
+            from inference.supervised_detector import detect_supervised_threat
+
+            self.source_detectors.append(
+                detect_supervised_threat
             )
 
         # ---------------------------------------------

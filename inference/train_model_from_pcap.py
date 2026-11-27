@@ -50,13 +50,22 @@ from features.dns_tracker import DNSTracker
 from features.tls_tracker import TLSTracker
 from features.tls_parser import parse_client_hello, compute_ja3
 
-from inference.feature_schema import FEATURE_NAMES, features_to_vector
+from inference.feature_schema import (
+    FEATURE_NAMES,
+    features_to_vector,
+    should_track_beacon_flow,
+)
+from features.tls_parser import parse_server_hello, parse_quic_packet
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.joblib")
 STATS_PATH = os.path.join(os.path.dirname(__file__), "feature_stats.json")
 
 
-def extract_training_vectors(pcap_path: str, max_packets: int = None):
+def extract_training_vectors(
+    pcap_path: str,
+    max_packets: int = None,
+    capture_records: list = None,
+):
     """
     Replay pcap_path through a FRESH set of the exact same
     feature-extraction components used live, and collect one
@@ -98,8 +107,17 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
             tls=tls_features,
         )
 
-        for source_ip in source_features.keys():
+        for source_ip in context.source_ips():
             combined = context.get_combined_source_features(source_ip)
+            if capture_records is not None:
+                capture_records.append({
+                    "source_ip": source_ip,
+                    "window_timestamp": float(timestamp),
+                    "window_start": float(
+                        timestamp - window_features["window_duration"]
+                    ),
+                    "features": dict(combined),
+                })
             vectors.append(features_to_vector(combined))
 
         source_aggregator.reset()
@@ -144,6 +162,22 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                                 extension_count=len(parsed_hello["extensions"]),
                                 has_sni=(parsed_hello["sni"] is not None),
                             )
+                        parsed_server = parse_server_hello(tcp_payload)
+                        if parsed_server is not None:
+                            tls_tracker.add_server_hello(
+                                timestamp=timestamp,
+                                server_ip=ip.src,
+                                client_ip=ip.dst,
+                                ja3s_hash=parsed_server["ja3s_hash"],
+                                cipher_suite=parsed_server["selected_cipher"],
+                                extension_count=len(parsed_server["extensions"]),
+                            )
+                        if dst_port in (443, 8443) or src_port in (443, 8443):
+                            tls_tracker.add_splt_packet(
+                                timestamp=timestamp,
+                                src_ip=ip.src,
+                                packet_bytes=len(packet),
+                            )
                 except Exception:
                     pass
 
@@ -153,6 +187,22 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                 dst_port = packet[UDP].dport
 
                 try:
+                    udp_payload = bytes(packet[UDP].payload)
+                    if (dst_port in (443, 8443) or src_port in (443, 8443)) and udp_payload:
+                        quic_meta = parse_quic_packet(udp_payload)
+                        if quic_meta:
+                            tls_tracker.add_quic_packet(
+                                timestamp=timestamp,
+                                src_ip=ip.src,
+                                dst_ip=ip.dst,
+                                quic_meta=quic_meta,
+                                packet_bytes=len(packet),
+                            )
+                            tls_tracker.add_splt_packet(
+                                timestamp=timestamp,
+                                src_ip=ip.src,
+                                packet_bytes=len(packet),
+                            )
                     if packet.haslayer(DNS):
                         dns_layer = packet[DNS]
                         if dns_layer.qr == 0 and dns_layer.qd:
@@ -163,7 +213,20 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                             raw_name = first_query.qname
                             domain = raw_name.decode("utf-8", errors="ignore") \
                                 if isinstance(raw_name, bytes) else str(raw_name)
-                            dns_tracker.add_query(timestamp=timestamp, src_ip=ip.src, domain=domain)
+                            qtype = getattr(first_query, "qtype", 1)
+                            dns_tracker.add_query(
+                                timestamp=timestamp,
+                                src_ip=ip.src,
+                                domain=domain,
+                                qtype=qtype,
+                                packet_bytes=len(packet),
+                            )
+                        elif dns_layer.qr == 1:
+                            dns_tracker.add_response(
+                                timestamp=timestamp,
+                                src_ip=ip.dst,
+                                response_bytes=len(packet),
+                            )
                 except Exception:
                     pass
 
@@ -182,8 +245,8 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                 src_ip=ip.src, dst_ip=ip.dst,
                 src_port=src_port or 0, dst_port=dst_port or 0, protocol=str(protocol),
             )
-            flow_engine.process_packet(record)
-            if is_new_flow:
+            flow = flow_engine.process_packet(record)
+            if should_track_beacon_flow(is_new_flow, src_port, dst_port):
                 beacon_tracker.record_new_flow(timestamp=timestamp, src_ip=ip.src, dst_ip=ip.dst)
 
             window_features = window_manager.add_packet(
@@ -199,6 +262,8 @@ def extract_training_vectors(pcap_path: str, max_packets: int = None):
                 src_ip=ip.src, dst_ip=ip.dst, protocol=protocol, packet_bytes=len(packet),
                 src_port=src_port or 0, dst_port=dst_port or 0,
                 tcp_syn=tcp_syn, tcp_ack=tcp_ack, tcp_rst=tcp_rst,
+                initiator_ip=flow.initiator_ip,
+                responder_ip=flow.responder_ip,
             )
             behavior_window.add_packet(
                 timestamp=timestamp, src_ip=ip.src, dst_ip=ip.dst, protocol=protocol,
