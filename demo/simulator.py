@@ -30,19 +30,12 @@ ATTACK_TYPES = {
 
 def reset_demo_pipeline():
     """
-    Reset only the in-memory streaming state used by the demo.
+    Reset the default collector pipeline state in place if needed.
 
-    Alert persistence is intentionally NOT reset. Alerts produced by
-    the simulator still go through the normal AlertManager/PostgreSQL
-    path and remain visible in the dashboard.
+    Prefer instantiating a dedicated collector.PacketPipeline() per
+    simulation so concurrent live capture is never interrupted.
     """
-    collector.flow_engine = FlowEngine(timeout=60)
-    collector.window_manager = WindowManager(window_seconds=1.0)
-    collector.source_aggregator = SourceAggregator()
-    collector.behavior_window = BehaviorWindow(window_seconds=10.0)
-    collector.beacon_tracker = BeaconTracker(window_seconds=300.0)
-    collector.dns_tracker = DNSTracker(window_seconds=30.0)
-    collector.tls_tracker = TLSTracker(window_seconds=300.0)
+    collector.live_pipeline.reset()
 
 
 def tcp_packet(src, dst, sport, dport, flags="S", payload=None):
@@ -294,7 +287,7 @@ def run_demo_simulation(
             f"Unsupported demo attack type: {attack_type}"
         )
 
-    reset_demo_pipeline()
+    pipeline = collector.PacketPipeline(use_ml=True, record_metrics=True)
 
     base = time.time()
     packets = build_packets(
@@ -305,21 +298,13 @@ def run_demo_simulation(
     )
 
     for packet in packets:
-        collector.process_packet(packet)
+        pipeline.process_packet(packet)
 
-    # Force the final 1-second observation window to close.
-    final_time = float(packets[-1].time) + 1.1
-
-    boundary = tcp_packet(
-        source_ip,
-        target_ip,
-        49000,
-        1,
-        "A",
-    )
-    boundary.time = final_time
-
-    collector.process_packet(boundary)
+    # Flush the final observation window cleanly without injecting synthetic TCP packets.
+    if packets:
+        pipeline.flush_if_ready(
+            float(packets[-1].time) + pipeline.window_manager.window_seconds + 0.1
+        )
 
     store = AlertStore()
     lookup_source = "__NETWORK__" if attack_type == "DISTRIBUTED_UDP_FLOOD" else source_ip

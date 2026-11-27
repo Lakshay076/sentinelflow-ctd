@@ -1,57 +1,100 @@
-import os
 import sqlite3
 from typing import Dict, List, Optional
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-
-DB_FALLBACK_URL = (
-    "postgresql://ctd_user:ctd_dev_password@localhost:5432/ctd"
+from config.database import (
+    DEFAULT_ENV_FILE,
+    DEFAULT_METRICS_DB_FILE,
+    DatabaseConnectionError,
+    connect_postgres,
+    handle_postgres_exception,
+    is_connection_error,
+    is_integrity_error,
+    redact_database_url,
+    resolve_database_config,
 )
 
-SQLITE_DB_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "ctd_metrics.db",
-)
+SQLITE_DB_FILE = DEFAULT_METRICS_DB_FILE
+
 
 class LiveMetricsStore:
     """
-    PostgreSQL-backed rolling telemetry store with SQLite fallback.
+    Rolling telemetry store supporting PostgreSQL persistence and SQLite fallback.
 
-    The collector and FastAPI run as separate processes, so live
-    metrics must be persisted outside Python process memory.
+    Backend selection is governed by config.database so telemetry/live_metrics.py
+    and alerts/alert_store.py always resolve the same database backend without
+    hardcoded credentials.
     """
 
-    def __init__(self, max_points: int = 60):
+    def __init__(
+        self,
+        max_points: int = 60,
+        db_path: Optional[str] = None,
+        env_file: Optional[str] = DEFAULT_ENV_FILE,
+    ):
         self.max_points = max_points
-        self.database_url = os.getenv(
-            "DATABASE_URL",
-            DB_FALLBACK_URL,
+        self.db_config = resolve_database_config(
+            store_name="live_metrics",
+            db_path=db_path,
+            default_sqlite_path=SQLITE_DB_FILE,
+            env_file=env_file,
         )
-        
-        print(
-            f"[LiveMetrics] DATABASE_URL configured: "
-            f"{bool(self.database_url)}, "
-            f"scheme: {self.database_url.split(':', 1)[0] if self.database_url else 'NONE'}",
-            flush=True,
-        )
-        
+        self.db_path = self.db_config.sqlite_path
+        self.database_url = self.db_config.database_url
+        self.strict_postgres = self.db_config.strict_postgres
         self.use_postgres = False
-        
-        if self.database_url and "YOUR_PASSWORD" not in self.database_url:
+
+        if self.db_config.backend == "postgres":
             self._init_postgres()
-            
+
         if not self.use_postgres:
             self._init_sqlite()
 
+        print(
+            f"[LiveMetrics] Selected backend={self.active_backend} "
+            f"(policy={self.db_config.policy}, target={self.active_target}, "
+            f"reason={self.db_config.reason}, strict={self.strict_postgres})",
+            flush=True,
+        )
+
+    @property
+    def active_backend(self) -> str:
+        """Return the active storage backend ('postgres' or 'sqlite')."""
+        return "postgres" if self.use_postgres else "sqlite"
+
+    @property
+    def active_target(self) -> str:
+        """Return a credential-free target description for the active backend."""
+        return self.backend_status()["target"]
+
+    def backend_status(self) -> dict:
+        """Return credential-free backend status metadata."""
+        return self.db_config.to_safe_dict(
+            active_backend=self.active_backend,
+            fallback_used=(self.db_config.backend == "postgres" and not self.use_postgres),
+        )
+
+    def _handle_postgres_runtime_error(
+        self,
+        operation: str,
+        exc: Exception,
+        *,
+        connection=None,
+        allow_fallback: bool = True,
+    ) -> None:
+        handle_postgres_exception(
+            "LiveMetrics",
+            operation,
+            exc,
+            db_config=self.db_config,
+            connection=connection,
+            allow_fallback=allow_fallback,
+        )
+        self.use_postgres = False
+        self._init_sqlite()
+
     def _init_postgres(self):
         try:
-            import psycopg
-            with psycopg.connect(self.database_url, connect_timeout=1) as connection:
+            with self._connect_postgres() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS live_metrics (
@@ -80,11 +123,33 @@ class LiveMetricsStore:
             print("[LiveMetrics] PostgreSQL schema initialized successfully", flush=True)
         except Exception as exc:
             self.use_postgres = False
-            print(f"[LIVE METRICS] PostgreSQL connection/init failed: {type(exc).__name__}: {exc}. Falling back to SQLite.", flush=True)
+            safe_msg = redact_database_url(
+                f"{type(exc).__name__}: {exc}",
+                self.database_url,
+            )
+            print(
+                f"[LiveMetrics] PostgreSQL connection/init failed: {safe_msg}",
+                flush=True,
+            )
+            if is_integrity_error(exc):
+                raise
+            if not self.db_config.allow_fallback:
+                if is_connection_error(exc):
+                    reason = (
+                        "strict PostgreSQL mode enabled"
+                        if self.strict_postgres
+                        else "explicit PostgreSQL backend (CTD_DB_BACKEND=postgres)"
+                    )
+                    raise DatabaseConnectionError(
+                        f"[LiveMetrics] PostgreSQL startup failed ({reason}): {safe_msg}"
+                    ) from exc
+                raise
+            if not is_connection_error(exc):
+                raise
 
     def _init_sqlite(self):
         try:
-            with sqlite3.connect(SQLITE_DB_FILE) as conn:
+            with self._connect_sqlite() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS live_metrics (
@@ -114,11 +179,13 @@ class LiveMetricsStore:
             print(f"[LIVE METRICS] SQLite init failed: {exc}", flush=True)
 
     def _connect_postgres(self):
-        import psycopg
-        return psycopg.connect(self.database_url, connect_timeout=1)
-        
+        return connect_postgres(
+            self.database_url,
+            connect_timeout=self.db_config.connect_timeout,
+        )
+
     def _connect_sqlite(self):
-        return sqlite3.connect(SQLITE_DB_FILE)
+        return sqlite3.connect(self.db_path)
 
     def add_window(
         self,
@@ -193,9 +260,7 @@ class LiveMetricsStore:
                     connection.commit()
                 return
             except Exception as exc:
-                print(f"[LIVE METRICS] PostgreSQL write failed: {exc}. Falling back to SQLite.")
-                self.use_postgres = False
-                self._init_sqlite()
+                self._handle_postgres_runtime_error("write", exc)
 
         # SQLite implementation
         query = """
@@ -249,9 +314,7 @@ class LiveMetricsStore:
                 if row is None: return None
                 return self._row_to_dict(row)
             except Exception as exc:
-                print(f"[LIVE METRICS] PostgreSQL read failed: {exc}. Falling back to SQLite.")
-                self.use_postgres = False
-                self._init_sqlite()
+                self._handle_postgres_runtime_error("read", exc)
 
         # SQLite implementation
         query = """
@@ -296,9 +359,7 @@ class LiveMetricsStore:
                         rows = cursor.fetchall()
                 return [self._row_to_dict(row) for row in reversed(rows)]
             except Exception as exc:
-                print(f"[LIVE METRICS] PostgreSQL history read failed: {exc}. Falling back to SQLite.")
-                self.use_postgres = False
-                self._init_sqlite()
+                self._handle_postgres_runtime_error("history read", exc)
 
         # SQLite implementation
         query = """
@@ -346,16 +407,21 @@ class LiveMetricsStore:
 
     def clear(self) -> None:
         if self.use_postgres:
+            active_conn = None
             try:
                 with self._connect_postgres() as connection:
+                    active_conn = connection
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM live_metrics")
                     connection.commit()
                 return
             except Exception as exc:
-                print(f"[LIVE METRICS] PostgreSQL clear failed: {exc}")
-                self.use_postgres = False
-                self._init_sqlite()
+                self._handle_postgres_runtime_error(
+                    "clear",
+                    exc,
+                    connection=active_conn,
+                    allow_fallback=False,
+                )
                 
         try:
             with self._connect_sqlite() as conn:

@@ -1,7 +1,7 @@
 import React from "react";
 import { CheckCircle } from "lucide-react";
 import { SeverityBadge } from "../components/Badges";
-import { formatAttackType } from "../utils";
+import { formatAttackType, formatSourceIp } from "../utils";
 import { LiveTrafficChart } from "../components/LiveTrafficChart";
 import { Reveal } from "../components/Reveal";
 
@@ -22,6 +22,21 @@ export function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
     ...points.map((point) => point.packets_per_second || 0),
     1
   );
+
+  const validTimestamps = points
+    .map((p) => (p?.timestamp ? Number(p.timestamp) * 1000 : NaN))
+    .filter((t) => Number.isFinite(t) && t > 0)
+    .sort((a, b) => a - b);
+  const hasHistoricalRange = isStale && validTimestamps.length > 0;
+  const axisStartLabel = hasHistoricalRange
+    ? new Date(validTimestamps[0]).toLocaleTimeString()
+    : "60s ago";
+  const axisMidLabel = hasHistoricalRange
+    ? `${new Date((validTimestamps[0] + validTimestamps[validTimestamps.length - 1]) / 2).toLocaleTimeString()} (historical)`
+    : "30s ago";
+  const axisEndLabel = hasHistoricalRange
+    ? new Date(validTimestamps[validTimestamps.length - 1]).toLocaleTimeString()
+    : "Now";
 
   return (
     <section className="live-monitoring-page">
@@ -129,9 +144,9 @@ export function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
         </div>
 
         <div className="traffic-chart-axis">
-          <span>60s ago</span>
-          <span>30s ago</span>
-          <span>Now</span>
+          <span>{axisStartLabel}</span>
+          <span>{axisMidLabel}</span>
+          <span>{axisEndLabel}</span>
         </div>
       </div>
       </Reveal>
@@ -202,7 +217,7 @@ export function LiveMonitoringPage({ liveMetrics, activeAlerts }) {
                     <strong>
                       {formatAttackType(alert.attack_type)}
                     </strong>
-                    <span>{alert.source_ip}</span>
+                    <span title={alert.source_ip}>{formatSourceIp(alert.source_ip)}</span>
                   </div>
 
                   <div className="live-threat-meta">

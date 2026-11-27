@@ -148,14 +148,30 @@ def detect_distributed_udp_flood(
         udp_packet_ratio = udp_packets / max(total_packets, 1) if total_packets > 0 else 0.0
 
     # -----------------------------------------------------------------
-    # 2. Extract or compute source diversity and entropy
+    # 2. Extract or compute UDP source diversity and entropy
     # -----------------------------------------------------------------
-    source_counts = features.get("udp_source_counts") or features.get("source_counts")
-    unique_sources = features.get("unique_sources", len(source_counts) if source_counts else 0)
+    udp_source_counts = features.get("udp_source_counts")
+    source_counts = (
+        udp_source_counts
+        if udp_source_counts is not None
+        else features.get("source_counts")
+    )
+    unique_sources = features.get("udp_sources")
+    if unique_sources is None:
+        unique_sources = features.get(
+            "unique_sources",
+            len(source_counts) if source_counts else 0,
+        )
 
-    # Derive entropy
-    entropy_bits = features.get("source_ip_entropy")
-    normalized_entropy = features.get("normalized_source_entropy")
+    # Derive UDP-scoped entropy when present; fall back to global keys
+    # only for standalone callers that do not pass UDP-specific keys.
+    entropy_bits = features.get("udp_source_entropy")
+    if entropy_bits is None:
+        entropy_bits = features.get("source_ip_entropy")
+
+    normalized_entropy = features.get("udp_normalized_entropy")
+    if normalized_entropy is None:
+        normalized_entropy = features.get("normalized_source_entropy")
 
     if (entropy_bits is None or normalized_entropy is None) and source_counts:
         calc_entropy, calc_norm = calculate_shannon_entropy(source_counts)
@@ -167,11 +183,13 @@ def detect_distributed_udp_flood(
     entropy_bits = entropy_bits or 0.0
     normalized_entropy = normalized_entropy or 0.0
 
-    # Average packets per source
-    mean_packets_per_source = features.get(
-        "mean_packets_per_source",
-        udp_packets / max(unique_sources, 1) if unique_sources > 0 else 0.0,
-    )
+    # Average packets per UDP source
+    mean_packets_per_source = features.get("mean_udp_packets_per_source")
+    if mean_packets_per_source is None:
+        mean_packets_per_source = features.get(
+            "mean_packets_per_source",
+            udp_packets / max(unique_sources, 1) if unique_sources > 0 else 0.0,
+        )
 
     # -----------------------------------------------------------------
     # Gating Check 1: Insufficient samples / low traffic

@@ -1,7 +1,7 @@
 import React from "react";
 import { X, CheckCircle2 } from "lucide-react";
 import { SeverityBadge, StatusBadge } from "./Badges";
-import { formatAttackType } from "../utils";
+import { formatAttackType, formatSourceIp } from "../utils";
 
 export function IncidentDrawer({ alert, onClose }) {
   const confidence = Math.round((alert.confidence || 0) * 100);
@@ -49,7 +49,9 @@ export function IncidentDrawer({ alert, onClose }) {
           <div className="incident-detail-grid">
             <div>
               <span>Source IP</span>
-              <strong className="incident-mono">{alert.source_ip}</strong>
+              <strong className="incident-mono" title={alert.source_ip}>
+                {formatSourceIp(alert.source_ip, { includeRaw: true })}
+              </strong>
             </div>
 
             <div>

@@ -106,7 +106,7 @@ export function DemoPipelineVisualization({ isRunning, currentVector, mode }) {
       <Node
         icon={Database}
         title="ALERTS / METRICS"
-        subtitle="PostgreSQL"
+        subtitle="SQLite"
         color="var(--brand-magenta)"
       />
 

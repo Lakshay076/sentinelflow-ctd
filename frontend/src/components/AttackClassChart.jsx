@@ -31,7 +31,7 @@ const CustomTooltip = ({ active, payload }) => {
           Incidents: <strong style={{ color: 'var(--text-primary)' }}>{data.count}</strong>
         </div>
         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-          {data.pct}% of total traffic
+          {data.pct}% of recorded incidents
         </div>
       </div>
     );

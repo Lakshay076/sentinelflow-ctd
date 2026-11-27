@@ -32,9 +32,12 @@ latest_benchmark_result = {
 }
 
 
+from scripts.generate_synthetic_traffic import DEFAULT_ATTACKS
+
+
 class GeneratePcapRequest(BaseModel):
     out: str = "demo.pcap"
-    attacks: Optional[List[str]] = ["scan", "syn_flood", "exfil", "beacon", "dga", "tls"]
+    attacks: Optional[List[str]] = list(DEFAULT_ATTACKS)
 
 
 class ReplayPcapRequest(BaseModel):
@@ -67,69 +70,26 @@ def get_pcap_files():
 def generate_synthetic_pcap(req: GeneratePcapRequest):
     """Generates a synthetic multi-host gateway traffic capture with ground-truth labels."""
     from scripts.generate_synthetic_traffic import (
-        INTERNAL_HOSTS,
         EXTERNAL_HOSTS,
-        build_normal_traffic,
-        build_port_scan,
-        build_syn_flood,
-        build_exfiltration,
-        build_c2_beaconing,
-        build_dga_dns_tunnelling,
-        build_tls_metadata_anomaly,
+        INTERNAL_HOSTS,
+        generate_synthetic_pcap_file,
     )
-    from scapy.all import wrpcap
-    import json
 
     out_path = os.path.join(PROJECT_ROOT, req.out)
-    packets = []
-    ts = time.time()
-    ts = build_normal_traffic(packets, ts, duration_s=30)
-
-    builders = {
-        "scan": build_port_scan,
-        "syn_flood": build_syn_flood,
-        "exfil": build_exfiltration,
-        "beacon": build_c2_beaconing,
-        "dga": build_dga_dns_tunnelling,
-        "tls": build_tls_metadata_anomaly,
-    }
-
-    for name in req.attacks:
-        if name in builders:
-            ts = builders[name](packets, ts + 1.0)
-
-    packets.sort(key=lambda p: p.time)
-    wrpcap(out_path, packets)
-
-    attacker_ip_by_attack = {
-        "scan": ("10.0.0.50", "PORT_SCAN"),
-        "syn_flood": ("10.0.0.51", "SYN_FLOOD"),
-        "exfil": ("10.0.0.52", "DATA_EXFILTRATION"),
-        "beacon": ("10.0.0.53", "C2_BEACONING"),
-        "dga": ("10.0.0.54", "DGA_DNS_TUNNELLING"),
-        "tls": ("10.0.0.55", "TLS_METADATA_ANOMALY"),
-    }
-    ground_truth = {
-        "pcap_file": req.out,
-        "expected_detections": [
-            {"source_ip": ip, "attack_type": attack_type}
-            for name, (ip, attack_type) in attacker_ip_by_attack.items()
-            if name in req.attacks
-        ],
-        "benign_ips": INTERNAL_HOSTS,
-    }
-    gt_path = out_path + ".ground_truth.json"
-    with open(gt_path, "w") as f:
-        json.dump(ground_truth, f, indent=2)
+    result = generate_synthetic_pcap_file(
+        out_path,
+        attacks=req.attacks,
+        pcap_label=req.out,
+    )
 
     return {
         "status": "success",
         "pcap_file": req.out,
         "ground_truth_file": req.out + ".ground_truth.json",
-        "packet_count": len(packets),
+        "packet_count": result["packet_count"],
         "internal_hosts": len(INTERNAL_HOSTS),
         "external_hosts": len(EXTERNAL_HOSTS),
-        "attacks_included": req.attacks,
+        "attacks_included": result["attacks_included"],
     }
 
 
@@ -164,6 +124,7 @@ def replay_pcap_file(req: ReplayPcapRequest):
             "flow_rate": benchmark.get("flow_rate", 0.0),
             "windows_evaluated": benchmark.get("windows_evaluated", 0),
             "alert_events": benchmark.get("alert_events", 0),
+            "alert_ids": benchmark.get("alert_ids", []),
             "last_run": time.time(),
         }
 
@@ -192,7 +153,16 @@ def validate_against_ground_truth(manifest: str = "demo.pcap.ground_truth.json")
         )
 
     try:
-        report = validate(manifest_path)
+        explicit_ids = None
+        if (
+            latest_benchmark_result.get("status") == "completed"
+            and os.path.basename(latest_benchmark_result.get("pcap_file", ""))
+            == os.path.basename(manifest_path.replace(".ground_truth.json", ""))
+            and "alert_ids" in latest_benchmark_result
+        ):
+            explicit_ids = latest_benchmark_result["alert_ids"]
+
+        report = validate(manifest_path, alert_ids=explicit_ids)
         return {
             "status": "success",
             "report": report,

@@ -12,8 +12,8 @@ import {
 export const API_BASE =
   import.meta.env.VITE_API_BASE ||
   (typeof window !== "undefined" && window.location.hostname
-    ? `http://${window.location.hostname}:8000`
-    : "http://localhost:8000");
+    ? `http://${window.location.hostname}:8001`
+    : "http://localhost:8001");
 
 export const DETECTORS_CONFIG = [
   {

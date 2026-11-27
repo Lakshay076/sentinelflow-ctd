@@ -15,6 +15,8 @@ no sniffing) and writes it to a .pcap file:
     evaluated per-class:
         PORT_SCAN            -> fan-out across many dest ports
         SYN_FLOOD            -> high-rate spoofed-looking SYNs
+        UDP_FLOOD            -> high-rate single-source UDP flood
+        DISTRIBUTED_UDP_FLOOD -> high-entropy spoofed-source UDP flood
         DATA_EXFILTRATION    -> large asymmetric outbound burst
         C2_BEACONING         -> fixed-interval repeated check-ins
         DGA_DNS_TUNNELLING   -> high-entropy DNS query names
@@ -44,15 +46,15 @@ GATEWAY_EXT_IP = "198.51.100.9"                                # a "normal" exte
 
 
 def build_normal_traffic(packets, start_ts, duration_s):
-    """A handful of internal hosts doing ordinary browsing / DNS."""
+    """Simulate internal hosts doing ordinary bidirectional browsing and DNS."""
     ts = start_ts
-    for _ in range(300):
+    for _ in range(150):
         src = random.choice(INTERNAL_HOSTS)
         dst = random.choice(EXTERNAL_HOSTS)
         sport = random.randint(40000, 60000)
 
         if random.random() < 0.3:
-            # ordinary DNS lookup for a normal-looking domain
+            # ordinary DNS lookup and UDP DNS response
             domain = random.choice(
                 ["example.com", "mail.example.org", "cdn.example.net", "shop.example.io"]
             )
@@ -61,18 +63,41 @@ def build_normal_traffic(packets, start_ts, duration_s):
                 / UDP(sport=sport, dport=53)
                 / DNS(rd=1, qd=DNSQR(qname=domain))
             )
+            ts += random.uniform(0.05, 0.25)
+            pkt.time = ts
+            packets.append(pkt)
+
+            resp = (
+                IP(src="8.8.8.8", dst=src)
+                / UDP(sport=53, dport=sport)
+                / DNS(qr=1, qd=DNSQR(qname=domain))
+                / Raw(load=b"R" * random.randint(60, 140))
+            )
+            ts += random.uniform(0.005, 0.02)
+            resp.time = ts
+            packets.append(resp)
         else:
-            # ordinary TCP handshake-ish traffic with a normal payload size
+            # ordinary TCP connection/request paired with server reply bytes
+            dport = random.choice([80, 443])
             flags = "S" if random.random() < 0.2 else "A"
             pkt = (
                 IP(src=src, dst=dst)
-                / TCP(sport=sport, dport=random.choice([80, 443]), flags=flags)
-                / Raw(load=b"x" * random.randint(50, 400))
+                / TCP(sport=sport, dport=dport, flags=flags)
+                / Raw(load=b"x" * random.randint(50, 250))
             )
+            ts += random.uniform(0.05, 0.25)
+            pkt.time = ts
+            packets.append(pkt)
 
-        ts += random.uniform(0.01, 0.2)
-        pkt.time = ts
-        packets.append(pkt)
+            resp_flags = "SA" if flags == "S" else "PA"
+            resp = (
+                IP(src=dst, dst=src)
+                / TCP(sport=dport, dport=sport, flags=resp_flags)
+                / Raw(load=b"y" * random.randint(300, 900))
+            )
+            ts += random.uniform(0.005, 0.03)
+            resp.time = ts
+            packets.append(resp)
 
     return ts
 
@@ -189,6 +214,116 @@ def build_tls_metadata_anomaly(packets, start_ts):
     return ts
 
 
+def build_udp_flood(packets, start_ts):
+    """One source sending a concentrated high-rate UDP flood."""
+    attacker = "10.0.0.56"
+    target = random.choice(EXTERNAL_HOSTS)
+    ts = start_ts
+    payload = b"U" * 128
+
+    for i in range(400):
+        pkt = (
+            IP(src=attacker, dst=target)
+            / UDP(sport=20000 + (i % 1000), dport=53)
+            / Raw(load=payload)
+        )
+        ts += 0.001
+        pkt.time = ts
+        packets.append(pkt)
+    return ts
+
+
+def build_distributed_udp_flood(packets, start_ts):
+    """Multiple spoofed sources sending a distributed high-entropy UDP flood."""
+    target = random.choice(EXTERNAL_HOSTS)
+    ts = start_ts
+    payload = b"D" * 512
+
+    # 120 packets distributed uniformly across 15 spoofed sources (8 pkts/source)
+    for i in range(120):
+        src_ip = f"10.88.{(i % 15) + 1}.1"
+        pkt = (
+            IP(src=src_ip, dst=target)
+            / UDP(sport=21000 + (i % 1000), dport=53)
+            / Raw(load=payload)
+        )
+        ts += 0.003
+        pkt.time = ts
+        packets.append(pkt)
+    return ts
+
+
+DEFAULT_ATTACKS = [
+    "scan",
+    "syn_flood",
+    "udp_flood",
+    "distributed_udp_flood",
+    "exfil",
+    "beacon",
+    "dga",
+    "tls",
+]
+
+ATTACK_BUILDERS = {
+    "scan": build_port_scan,
+    "syn_flood": build_syn_flood,
+    "udp_flood": build_udp_flood,
+    "distributed_udp_flood": build_distributed_udp_flood,
+    "exfil": build_exfiltration,
+    "beacon": build_c2_beaconing,
+    "dga": build_dga_dns_tunnelling,
+    "tls": build_tls_metadata_anomaly,
+}
+
+ATTACKER_IP_BY_ATTACK = {
+    "scan": ("10.0.0.50", "PORT_SCAN"),
+    "syn_flood": ("10.0.0.51", "SYN_FLOOD"),
+    "udp_flood": ("10.0.0.56", "UDP_FLOOD"),
+    "distributed_udp_flood": ("__NETWORK__", "DISTRIBUTED_UDP_FLOOD"),
+    "exfil": ("10.0.0.52", "DATA_EXFILTRATION"),
+    "beacon": ("10.0.0.53", "C2_BEACONING"),
+    "dga": ("10.0.0.54", "DGA_DNS_TUNNELLING"),
+    "tls": ("10.0.0.55", "TLS_METADATA_ANOMALY"),
+}
+
+
+def generate_synthetic_pcap_file(out_path: str, attacks=None, pcap_label=None) -> dict:
+    """Generate a synthetic gateway PCAP and matching ground-truth manifest."""
+    selected_attacks = list(attacks) if attacks is not None else list(DEFAULT_ATTACKS)
+
+    packets = []
+    ts = time.time()
+    ts = build_normal_traffic(packets, ts, duration_s=30)
+
+    for name in selected_attacks:
+        builder = ATTACK_BUILDERS.get(name)
+        if builder is not None:
+            ts = builder(packets, ts + 1.0)
+
+    packets.sort(key=lambda p: p.time)
+    wrpcap(out_path, packets)
+
+    ground_truth = {
+        "pcap_file": pcap_label if pcap_label is not None else out_path,
+        "expected_detections": [
+            {"source_ip": ip, "attack_type": attack_type}
+            for name, (ip, attack_type) in ATTACKER_IP_BY_ATTACK.items()
+            if name in selected_attacks
+        ],
+        "benign_ips": INTERNAL_HOSTS,
+    }
+    gt_path = out_path + ".ground_truth.json"
+    with open(gt_path, "w") as f:
+        json.dump(ground_truth, f, indent=2)
+
+    return {
+        "packet_count": len(packets),
+        "gt_path": gt_path,
+        "ground_truth": ground_truth,
+        "attacks_included": selected_attacks,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate a synthetic multi-host gateway pcap")
     parser.add_argument(
@@ -197,61 +332,18 @@ def main():
     )
     parser.add_argument(
         "--attacks", nargs="*",
-        default=["scan", "syn_flood", "exfil", "beacon", "dga", "tls"],
+        default=list(DEFAULT_ATTACKS),
         help="Which attack patterns to include (default: all)"
     )
     args = parser.parse_args()
 
-    packets = []
-    ts = time.time()
+    result = generate_synthetic_pcap_file(args.out, attacks=args.attacks, pcap_label=args.out)
 
-    ts = build_normal_traffic(packets, ts, duration_s=30)
-
-    builders = {
-        "scan": build_port_scan,
-        "syn_flood": build_syn_flood,
-        "exfil": build_exfiltration,
-        "beacon": build_c2_beaconing,
-        "dga": build_dga_dns_tunnelling,
-        "tls": build_tls_metadata_anomaly,
-    }
-
-    for name in args.attacks:
-        if name in builders:
-            ts = builders[name](packets, ts + 1.0)
-
-    packets.sort(key=lambda p: p.time)
-    wrpcap(args.out, packets)
-
-    # Write a ground-truth manifest alongside the pcap so
-    # scripts/validate_detections.py can automatically check
-    # whether your pipeline actually caught what it should have.
-    attacker_ip_by_attack = {
-        "scan": ("10.0.0.50", "PORT_SCAN"),
-        "syn_flood": ("10.0.0.51", "SYN_FLOOD"),
-        "exfil": ("10.0.0.52", "DATA_EXFILTRATION"),
-        "beacon": ("10.0.0.53", "C2_BEACONING"),
-        "dga": ("10.0.0.54", "DGA_DNS_TUNNELLING"),
-        "tls": ("10.0.0.55", "TLS_METADATA_ANOMALY"),
-    }
-    ground_truth = {
-        "pcap_file": args.out,
-        "expected_detections": [
-            {"source_ip": ip, "attack_type": attack_type}
-            for name, (ip, attack_type) in attacker_ip_by_attack.items()
-            if name in args.attacks
-        ],
-        "benign_ips": INTERNAL_HOSTS,
-    }
-    gt_path = args.out + ".ground_truth.json"
-    with open(gt_path, "w") as f:
-        json.dump(ground_truth, f, indent=2)
-
-    print(f"Wrote {len(packets)} packets to {args.out}")
-    print(f"Wrote ground-truth manifest to {gt_path}")
+    print(f"Wrote {result['packet_count']} packets to {args.out}")
+    print(f"Wrote ground-truth manifest to {result['gt_path']}")
     print(f"Internal hosts simulated : {len(INTERNAL_HOSTS)}")
     print(f"External hosts simulated : {len(EXTERNAL_HOSTS)}")
-    print(f"Attack patterns included : {args.attacks}")
+    print(f"Attack patterns included : {result['attacks_included']}")
     print()
     print("Replay it with:")
     print(f"  python -m collector.pcap_replay_collector {args.out}")

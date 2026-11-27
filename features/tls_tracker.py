@@ -220,9 +220,9 @@ class TLSTracker:
                 unique_ja4_count = len(unique_ja4s)
 
             else:
-                avg_cipher_count = 999.0
-                avg_extension_count = 999.0
-                missing_sni_ratio = 0.0
+                avg_cipher_count = None
+                avg_extension_count = None
+                missing_sni_ratio = None
                 max_same_ja3_to_one_dest = 0
                 max_same_ja4_to_one_dest = 0
                 unique_ja3_count = 0
@@ -281,18 +281,8 @@ class TLSTracker:
                 splt_ipt_cv = 1.0
                 splt_sample_sequence = []
 
-            results[src_ip] = {
-                # Existing Features (Preserved 100%)
+            source_features = {
                 "tls_client_hello_count": count,
-                "tls_avg_cipher_count": avg_cipher_count,
-                "tls_avg_extension_count": avg_extension_count,
-                "tls_missing_sni_ratio": missing_sni_ratio,
-                "tls_max_same_ja3_to_one_dest": max_same_ja3_to_one_dest,
-
-                # JA4 Features
-                "tls_unique_ja4_count": unique_ja4_count,
-                "tls_latest_ja4": latest_ja4,
-                "tls_max_same_ja4_to_one_dest": max_same_ja4_to_one_dest,
 
                 # JA3S Features
                 "tls_ja3s_count": ja3s_count,
@@ -312,6 +302,22 @@ class TLSTracker:
                 "splt_ipt_cv": splt_ipt_cv,
                 "splt_sample_sequence": splt_sample_sequence,
             }
+
+            # Emit ClientHello-specific metadata only when at least one
+            # ClientHello was observed so SPLT/QUIC/ServerHello-only sources
+            # fall back to normal schema defaults (e.g. tls_avg_cipher_count=20.0).
+            if count > 0:
+                source_features.update({
+                    "tls_avg_cipher_count": avg_cipher_count,
+                    "tls_avg_extension_count": avg_extension_count,
+                    "tls_missing_sni_ratio": missing_sni_ratio,
+                    "tls_max_same_ja3_to_one_dest": max_same_ja3_to_one_dest,
+                    "tls_unique_ja4_count": unique_ja4_count,
+                    "tls_latest_ja4": latest_ja4,
+                    "tls_max_same_ja4_to_one_dest": max_same_ja4_to_one_dest,
+                })
+
+            results[src_ip] = source_features
 
         return results
 

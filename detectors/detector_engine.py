@@ -53,7 +53,7 @@ class DetectorEngine:
         #   detect_tls_anomaly      -> encrypted malware
         # ---------------------------------------------
 
-        self.source_detectors = [
+        self.rule_detectors = [
             detect_port_scan,
             detect_syn_flood,
             detect_udp_flood,
@@ -62,6 +62,9 @@ class DetectorEngine:
             detect_dga_dns,
             detect_tls_anomaly,
         ]
+        self.source_detectors = list(self.rule_detectors)
+        self.use_ml = use_ml
+        self._ml_batch_detector = None
 
         # ---------------------------------------------
         # STAGE 5 ADDITION: the ML anomaly detector.
@@ -78,11 +81,15 @@ class DetectorEngine:
 
         if use_ml:
 
-            from inference.ml_detector import detect_ml_anomaly
+            from inference.ml_detector import (
+                detect_ml_anomaly,
+                detect_ml_anomalies_batch,
+            )
 
             self.source_detectors.append(
                 detect_ml_anomaly
             )
+            self._ml_batch_detector = detect_ml_anomalies_batch
 
         # ---------------------------------------------
         # Network-level detectors.
@@ -204,6 +211,33 @@ class DetectorEngine:
     # COMPLETE CONTEXT ANALYSIS
     # =================================================
 
+    @staticmethod
+    def _is_active_source_in_window(context: FeatureContext, source_ip: str) -> bool:
+        """
+        Determine whether `source_ip` should be evaluated in this cycle.
+
+        In streaming 1s windows (`context.sources` populated or `window_duration`
+        set), only sources with outbound activity in the current window are
+        evaluated so idle or unrelated-broadcast windows (e.g. 0.0.0.0 DHCP)
+        cannot re-trigger stale historical rolling features. Rolling-only unit
+        test contexts (`sources={}` without `window_duration`) keep all
+        historical keys eligible.
+        """
+        if not context.sources:
+            if "window_duration" in context.network or context.network.get("packets") == 0:
+                return False
+            return True
+
+        current = context.sources.get(source_ip)
+        if not current:
+            return False
+
+        if current.get("packets", 0) > 0 or current.get("packets_per_second", 0) > 0:
+            return True
+        if current.get("active_flows", 0) > 0 or current.get("flows_per_second", 0) > 0:
+            return True
+        return "packets" not in current
+
     def analyze_context(
         self,
         context: FeatureContext
@@ -229,19 +263,29 @@ class DetectorEngine:
         # Source-level detection
         # ---------------------------------------------
 
-        for source_ip in context.source_ips():
+        source_list = [
+            source_ip
+            for source_ip in context.source_ips()
+            if self._is_active_source_in_window(context, source_ip)
+        ]
+        combined_list = [
+            context.get_combined_source_features(source_ip)
+            for source_ip in source_list
+        ]
 
-            combined_features = (
-                context.get_combined_source_features(
-                    source_ip
-                )
-            )
-
-            results = self.analyze(
-                combined_features
-            )
-
+        for source_ip, combined_features in zip(source_list, combined_list):
+            results = []
+            for detector in self.rule_detectors:
+                result = detector(combined_features)
+                if result.detected:
+                    results.append(result)
             detections[source_ip] = results
+
+        if self.use_ml and self._ml_batch_detector is not None and combined_list:
+            ml_results = self._ml_batch_detector(combined_list)
+            for source_ip, ml_result in zip(source_list, ml_results):
+                if ml_result.detected:
+                    detections[source_ip].append(ml_result)
 
         # ---------------------------------------------
         # Network-level detection

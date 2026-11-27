@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 from alerts.alert_manager import AlertManager
 from detectors.detection_result import DetectionResult
 
@@ -38,9 +41,17 @@ def main():
     print("CTD — ALERT MANAGER TEST")
     print("=" * 70)
 
-    manager = AlertManager(
-        resolve_after=10.0
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test_alert_manager.db")
+        manager = AlertManager(
+            resolve_after=10.0,
+            db_path=db_path,
+        )
+
+        _run_alert_manager_checks(manager)
+
+
+def _run_alert_manager_checks(manager: AlertManager):
 
     # --------------------------------------------------
     # 1. First attack

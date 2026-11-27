@@ -5,29 +5,34 @@ import {
 } from "lucide-react";
 import { Reveal } from "../components/Reveal";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { formatAttackType } from "../utils";
+import { dedupeIncidents } from "../utils";
+
+const THREAT_DEFINITIONS = [
+  { type: "SYN_FLOOD", label: "SYN Flood" },
+  { type: "UDP_FLOOD", label: "UDP Flood" },
+  { type: "DISTRIBUTED_UDP_FLOOD", label: "Distributed UDP Flood" },
+  { type: "PORT_SCAN", label: "Port Scanning" },
+  { type: "C2_BEACONING", label: "C2 Beaconing" },
+  { type: "DGA_DNS_TUNNELLING", label: "DGA / DNS Tunnelling" },
+  { type: "TLS_METADATA_ANOMALY", label: "TLS Metadata Anomaly" },
+  { type: "DATA_EXFILTRATION", label: "Data Exfiltration" },
+  { type: "ML_ANOMALY", label: "ML Anomaly" },
+];
 
 export function ThreatIntelligencePage({ activeAlerts, history }) {
-  const allIncidents = [...activeAlerts, ...history];
+  const allIncidents = useMemo(
+    () => dedupeIncidents(activeAlerts, history),
+    [activeAlerts, history]
+  );
 
   const activeSources = [...new Set(
     activeAlerts.map((alert) => alert.source_ip).filter(Boolean)
   )];
 
-  // Threat Definitions & Data for Recharts
-  const threatDefinitions = [
-    { type: "SYN_FLOOD", label: "SYN Flood" },
-    { type: "UDP_FLOOD", label: "UDP Flood" },
-    { type: "DISTRIBUTED_UDP_FLOOD", label: "Distributed UDP Flood" },
-    { type: "PORT_SCAN", label: "Port Scanning" },
-    { type: "C2_BEACONING", label: "C2 Beaconing" },
-    { type: "DGA_DNS_TUNNELLING", label: "DGA / DNS Tunnelling" },
-    { type: "TLS_METADATA_ANOMALY", label: "TLS Metadata Anomaly" },
-    { type: "DATA_EXFILTRATION", label: "Data Exfiltration" },
-  ];
+  const threatDefinitions = THREAT_DEFINITIONS;
 
   const chartData = useMemo(() => {
-    return threatDefinitions.map(def => {
+    return THREAT_DEFINITIONS.map(def => {
       const count = allIncidents.filter(inc => inc.attack_type === def.type).length;
       return {
         name: def.label,
@@ -106,7 +111,7 @@ export function ThreatIntelligencePage({ activeAlerts, history }) {
                         axisLine={false} 
                         tickLine={false} 
                         tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                        width={140}
+                        width={160}
                       />
                       <Tooltip 
                         cursor={{fill: 'var(--bg-tertiary)'}}
@@ -201,6 +206,16 @@ export function ThreatIntelligencePage({ activeAlerts, history }) {
               <div>High SYN ratio, SYN rate, flow creation rate</div>
             </div>
             <div className="coverage-row">
+              <div><strong>UDP Flood</strong></div>
+              <div>High-rate volumetric UDP flooding or amplification targeting</div>
+              <div>UDP packet rate, UDP dominance ratio, UDP bandwidth, port concentration</div>
+            </div>
+            <div className="coverage-row">
+              <div><strong>Distributed UDP Flood</strong></div>
+              <div>Network-wide spoofed-source UDP floods across windows</div>
+              <div>Aggregate UDP rate/bandwidth, unique sources, Shannon source-IP entropy</div>
+            </div>
+            <div className="coverage-row">
               <div><strong>Port Scanning</strong></div>
               <div>Multi-port reconnaissance</div>
               <div>Destination-port diversity, rapid flow creation, SYN behaviour</div>
@@ -224,6 +239,11 @@ export function ThreatIntelligencePage({ activeAlerts, history }) {
               <div><strong>Data Exfiltration</strong></div>
               <div>Asymmetric data transfer</div>
               <div>Outbound volume, directional asymmetry, sustained transfer rate</div>
+            </div>
+            <div className="coverage-row">
+              <div><strong>ML Anomaly</strong></div>
+              <div>Unsupervised behavioural deviation (corroborates known attacks; standalone alerts default to Low severity)</div>
+              <div>Aggregate flow rates, protocol ratios, port/IP diversity, Isolation Forest score</div>
             </div>
           </div>
         </section>

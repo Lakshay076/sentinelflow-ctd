@@ -32,6 +32,8 @@ export function AboutArchitecture() {
               <strong>Rule-Based Detectors</strong>
               <ul>
                 <li>SYN Flood</li>
+                <li>UDP Flood</li>
+                <li>Distributed UDP Flood</li>
                 <li>Port Scanning</li>
                 <li>C2 Beaconing</li>
                 <li>DGA / DNS Tunnelling</li>
@@ -92,7 +94,7 @@ export function AboutArchitecture() {
       <div className="arch-system-stack">
         <div className="arch-node"><strong>Alert Manager</strong></div>
         <div className="arch-arrow"><ArrowDown size={16} /></div>
-        <div className="arch-node"><strong>PostgreSQL</strong></div>
+        <div className="arch-node"><strong>SQLite</strong></div>
         <div className="arch-arrow"><ArrowDown size={16} /></div>
         <div className="arch-node"><strong>FastAPI</strong></div>
         <div className="arch-arrow"><ArrowDown size={16} /></div>

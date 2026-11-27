@@ -44,6 +44,8 @@ class BehaviorWindow:
         tcp_syn: bool = False,
         tcp_ack: bool = False,
         tcp_rst: bool = False,
+        initiator_ip: str = None,
+        responder_ip: str = None,
     ):
         """
         Add one packet and remove observations
@@ -61,6 +63,8 @@ class BehaviorWindow:
             tcp_syn,
             tcp_ack,
             tcp_rst,
+            initiator_ip,
+            responder_ip,
         )
 
         self.events.append(event)
@@ -124,6 +128,8 @@ class BehaviorWindow:
                 tcp_syn,
                 tcp_ack,
                 tcp_rst,
+                initiator_ip,
+                _responder_ip,
             ) = event
 
             source = sources[src_ip]
@@ -133,19 +139,20 @@ class BehaviorWindow:
             source["bytes"] += packet_bytes
             dest["bytes_received"] += packet_bytes
 
-            source["destinations"].add(dst_ip)
-
-            if dst_port:
-                source["destination_ports"].add(
-                    dst_port
-                )
+            # Attribute connection-initiation and scan fan-out metrics to the
+            # initiator (matching SourceAggregator), while keeping byte/packet
+            # totals packet-direction based. Responders sending SYN+ACK/ACK/RST
+            # must never inherit connection or scan-port metrics.
+            connection_source_ip = initiator_ip or src_ip
+            connection_source = sources[connection_source_ip]
+            is_initiator_or_unassigned = initiator_ip is None or initiator_ip == src_ip
 
             if protocol == "TCP":
 
                 source["tcp_packets"] += 1
 
-                if tcp_syn:
-                    source["tcp_syn"] += 1
+                if tcp_syn and not tcp_ack and is_initiator_or_unassigned:
+                    connection_source["tcp_syn"] += 1
 
                 if tcp_ack:
                     source["tcp_ack"] += 1
@@ -153,13 +160,22 @@ class BehaviorWindow:
                 if tcp_rst:
                     source["tcp_rst"] += 1
 
+                if initiator_ip == src_ip or (initiator_ip is None and not tcp_rst):
+                    connection_source["destinations"].add(dst_ip)
+                    if dst_port:
+                        connection_source["destination_ports"].add(dst_port)
+
             elif protocol == "UDP":
 
                 source["udp_packets"] += 1
+                source["destinations"].add(dst_ip)
+                if dst_port:
+                    source["destination_ports"].add(dst_port)
 
             elif protocol == "ICMP":
 
                 source["icmp_packets"] += 1
+                source["destinations"].add(dst_ip)
 
             flow_id = (
                 f"{src_ip}:{src_port}"
@@ -167,7 +183,10 @@ class BehaviorWindow:
                 f"/{protocol}"
             )
 
-            source["flows"].add(flow_id)
+            if initiator_ip == src_ip:
+                connection_source["flows"].add(flow_id)
+            elif initiator_ip is None and not (protocol == "TCP" and tcp_rst and not tcp_syn):
+                source["flows"].add(flow_id)
 
         return self._build_features(
             sources

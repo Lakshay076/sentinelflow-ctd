@@ -38,6 +38,7 @@ broader, less-defined weirdness.
 
 import json
 import os
+from typing import Dict, List
 
 from detectors.detection_result import DetectionResult
 from inference.feature_schema import FEATURE_NAMES, features_to_vector
@@ -61,6 +62,7 @@ STATS_PATH = os.path.join(
 
 CONFIDENCE_SCALE = 0.20
 MIN_CONFIDENCE_WHEN_DETECTED = 0.3
+ANOMALY_SCORE_THRESHOLD = -0.04
 
 
 # Lazy-loaded singletons, so the model file is only read
@@ -191,59 +193,66 @@ def _explain(vector, stats):
     return reasons
 
 
-def detect_ml_anomaly(features: dict) -> DetectionResult:
+def _no_anomaly_result() -> DetectionResult:
+    return DetectionResult(
+        detected=False,
+        attack_type=None,
+        severity="NONE",
+        score=0,
+        confidence=0.0,
+        reasons=[],
+    )
 
-    _try_load()
 
-    if _model is None:
+def _ml_feature_view(features: dict) -> dict:
+    """
+    Build the same-window feature view expected by IsolationForest.
 
-        # Model not trained yet -- behave as "nothing
-        # detected" rather than crashing the pipeline.
-        return DetectionResult(
-            detected=False,
-            attack_type=None,
-            severity="NONE",
-            score=0,
-            confidence=0.0,
-            reasons=[],
-        )
+    SourceAggregator scopes ``unique_destinations`` to initiated connections
+    (TCP SYN and UDP) so scan heuristics never count established TCP ACKs.
+    When an active sender in the current 1-second window has non-SYN outbound
+    packets (``observed_unique_destinations > 0``) and ``unique_destinations == 0``,
+    map the same-window observed destination counts so ML does not treat normal
+    established TCP flows as contacting zero destinations.
+    """
+    obs_dests = features.get("observed_unique_destinations")
+    if obs_dests is not None and features.get("unique_destinations", 0) == 0 and obs_dests > 0:
+        view = dict(features)
+        view["unique_destinations"] = obs_dests
+        if view.get("unique_destination_ports", 0) == 0:
+            view["unique_destination_ports"] = features.get("observed_unique_destination_ports", 0)
+        if view.get("ports_per_destination", 0.0) == 0.0:
+            view["ports_per_destination"] = features.get("observed_ports_per_destination", 0.0)
+        return view
+    return features
 
-    # Ensure source has performed active traffic before evaluating ML anomaly
-    # Idle or trivial background traffic (e.g. 1-2 packets) is not an anomaly
+
+def _is_active_for_ml(features: dict) -> bool:
+    """Return True if the source shows enough activity to score with ML."""
     packets = features.get("packets", 0)
     bytes_sent = features.get("bytes", 0)
     flows = features.get("active_flows", 0)
     dns_count = features.get("dns_query_count", 0)
     tls_count = features.get("tls_client_hello_count", 0)
+    return not (
+        packets < 5
+        and bytes_sent < 500
+        and flows < 3
+        and dns_count < 2
+        and tls_count < 1
+    )
 
-    if packets < 5 and bytes_sent < 500 and flows < 3 and dns_count < 2 and tls_count < 1:
-        return DetectionResult(
-            detected=False,
-            attack_type=None,
-            severity="NONE",
-            score=0,
-            confidence=0.0,
-            reasons=[],
-        )
 
-    vector = features_to_vector(features)
+def _score_to_detection(vector: list, raw_score: float) -> DetectionResult:
+    """
+    Convert an IsolationForest decision_function score into a DetectionResult.
 
-    prediction = _model.predict([vector])[0]
-    raw_score = _model.decision_function([vector])[0]
-
-    # Only flag as anomaly if the IsolationForest predicts -1 and score is meaningfully negative
-    is_anomaly = (prediction == -1) and (raw_score < -0.04)
-
-    if not is_anomaly:
-
-        return DetectionResult(
-            detected=False,
-            attack_type=None,
-            severity="NONE",
-            score=0,
-            confidence=0.0,
-            reasons=[],
-        )
+    In scikit-learn IsolationForest, predict(X) == -1 iff decision_function(X) < 0.
+    Since ANOMALY_SCORE_THRESHOLD (-0.04) < 0, checking raw_score < -0.04 is
+    equivalent to (prediction == -1 and raw_score < -0.04) with a single tree pass.
+    """
+    if raw_score >= ANOMALY_SCORE_THRESHOLD:
+        return _no_anomaly_result()
 
     # Convert the raw score into a friendlier 0-1 confidence.
     # More negative raw_score = more anomalous.
@@ -278,6 +287,54 @@ def detect_ml_anomaly(features: dict) -> DetectionResult:
         confidence=confidence,
         reasons=reasons,
     )
+
+
+def detect_ml_anomalies_batch(features_list: List[Dict]) -> List[DetectionResult]:
+    """
+    Score a batch of source feature dictionaries in a single IsolationForest
+    decision_function() call while preserving exact per-source decision semantics.
+    """
+    if not features_list:
+        return []
+
+    _try_load()
+
+    if _model is None:
+        return [_no_anomaly_result() for _ in features_list]
+
+    results = [_no_anomaly_result() for _ in features_list]
+    active_indices = []
+    active_vectors = []
+
+    for idx, features in enumerate(features_list):
+        if _is_active_for_ml(features):
+            active_indices.append(idx)
+            active_vectors.append(features_to_vector(_ml_feature_view(features)))
+
+    if not active_vectors:
+        return results
+
+    raw_scores = _model.decision_function(active_vectors)
+    for idx, vector, raw_score in zip(active_indices, active_vectors, raw_scores):
+        results[idx] = _score_to_detection(vector, float(raw_score))
+
+    return results
+
+
+def detect_ml_anomaly(features: dict) -> DetectionResult:
+    _try_load()
+
+    if _model is None:
+        # Model not trained yet -- behave as "nothing
+        # detected" rather than crashing the pipeline.
+        return _no_anomaly_result()
+
+    if not _is_active_for_ml(features):
+        return _no_anomaly_result()
+
+    vector = features_to_vector(_ml_feature_view(features))
+    raw_score = float(_model.decision_function([vector])[0])
+    return _score_to_detection(vector, raw_score)
 
 
 if __name__ == "__main__":

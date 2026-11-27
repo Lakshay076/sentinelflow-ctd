@@ -155,7 +155,16 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           out: "demo.pcap",
-          attacks: ["scan", "syn_flood", "exfil", "beacon", "dga", "tls"],
+          attacks: [
+            "scan",
+            "syn_flood",
+            "udp_flood",
+            "distributed_udp_flood",
+            "exfil",
+            "beacon",
+            "dga",
+            "tls",
+          ],
         }),
       });
       const data = await res.json();

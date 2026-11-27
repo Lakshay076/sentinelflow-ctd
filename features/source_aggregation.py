@@ -27,6 +27,8 @@ class SourceAggregator:
             "tcp_rst": 0,
             "destination_ips": set(),
             "destination_ports": set(),
+            "observed_destination_ips": set(),
+            "observed_destination_ports": set(),
             "flows": set(),
         }
 
@@ -50,6 +52,10 @@ class SourceAggregator:
         source["packets"] += 1
         source["bytes"] += packet_bytes
         dest["bytes_received"] += packet_bytes
+        source["observed_destination_ips"].add(dst_ip)
+        is_initiator_or_unassigned = initiator_ip is None or initiator_ip == src_ip
+        if dst_port and is_initiator_or_unassigned and not (tcp_syn and tcp_ack) and not (tcp_rst and not tcp_syn):
+            source["observed_destination_ports"].add(dst_port)
 
         # Connection-attempt features are attributed to the
         # flow initiator, not blindly to packet src_ip.
@@ -63,7 +69,7 @@ class SourceAggregator:
         connection_source_ip = initiator_ip or src_ip
         connection_source = self.sources[connection_source_ip]
 
-        if tcp_syn and (initiator_ip is None or initiator_ip == src_ip):
+        if tcp_syn and not tcp_ack and (initiator_ip is None or initiator_ip == src_ip):
             connection_source["destination_ips"].add(dst_ip)
 
             if dst_port:
@@ -74,7 +80,7 @@ class SourceAggregator:
         if protocol == "TCP":
             source["tcp_packets"] += 1
 
-            if tcp_syn and (initiator_ip is None or initiator_ip == src_ip):
+            if tcp_syn and not tcp_ack and (initiator_ip is None or initiator_ip == src_ip):
                 connection_source["tcp_syn"] += 1
 
             if tcp_ack:
@@ -144,6 +150,7 @@ class SourceAggregator:
                 "rst_rate": source["tcp_rst"] / duration,
                 "unique_destinations": len(source["destination_ips"]),
                 "unique_destination_ports": len(source["destination_ports"]),
+                "destination_ports": sorted(source["destination_ports"]),
                 "active_flows": flows,
                 "flows_per_second": flows / duration,
                 "syn_packet_ratio": source["tcp_syn"] / max(packets, 1),
@@ -151,6 +158,12 @@ class SourceAggregator:
                 "ports_per_destination": (
                     len(source["destination_ports"])
                     / max(len(source["destination_ips"]), 1)
+                ),
+                "observed_unique_destinations": len(source["observed_destination_ips"]),
+                "observed_unique_destination_ports": len(source["observed_destination_ports"]),
+                "observed_ports_per_destination": (
+                    len(source["observed_destination_ports"])
+                    / max(len(source["observed_destination_ips"]), 1)
                 ),
             }
 

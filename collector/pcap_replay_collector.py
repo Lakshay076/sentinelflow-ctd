@@ -35,22 +35,24 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import time
 
 from scapy.utils import PcapReader
 
-# Reuse the ENTIRE existing pipeline unmodified: flow engine,
-# window manager, all 6 rule detectors + ML detector, alert
-# manager. Only the packet SOURCE changes.
+# Reuse the EXACT same PacketPipeline class as the live collector,
+# instantiated per replay so replays never share mutable state with a
+# concurrently running live collector or prior simulations.
 from collector import packet_collector as live
 
 
 def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
     """
-    Feed every packet in `pcap_path` through the existing
-    detection pipeline (live.process_packet), preserving the
-    file's original inter-packet timing unless max_speed is set.
+    Feed every packet in `pcap_path` through an isolated PacketPipeline
+    instance (same flow engine, windows, trackers, rule detectors, ML
+    detector, correlator, and alert manager as live capture), preserving
+    original inter-packet timing unless max_speed is set.
 
     speed:
         1.0  = replay at the same pace it was originally
@@ -71,6 +73,8 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
     print("Payload     : NOT INSPECTED (metadata only)")
     print("=" * 70)
 
+    pipeline = live.PacketPipeline(use_ml=True, record_metrics=True)
+
     packet_count = 0
     byte_count = 0
     prev_pkt_ts = None
@@ -78,18 +82,6 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
 
     wall_start = time.time()
     last_shifted_ts = wall_start
-
-    initial_alerts = {a.alert_id: a.event_count for a in live.alert_manager.active_alerts()}
-
-    windows_evaluated = 0
-    original_evaluate_window = live.evaluate_window
-
-    def tracked_evaluate_window(*args, **kwargs):
-        nonlocal windows_evaluated
-        windows_evaluated += 1
-        return original_evaluate_window(*args, **kwargs)
-
-    live.evaluate_window = tracked_evaluate_window
 
     with PcapReader(pcap_path) as reader:
         for packet in reader:
@@ -113,46 +105,35 @@ def replay(pcap_path: str, speed: float = 1.0, max_speed: bool = False):
             packet.time = shifted_ts
             last_shifted_ts = shifted_ts
 
-            # This one call does everything the live collector does:
-            # flow tracking, feature windows, all 7 detectors, alerts.
-            live.process_packet(packet)
+            # Isolated pipeline: does not touch live_pipeline globals.
+            pipeline.process_packet(packet)
 
             if packet_count % 2000 == 0:
                 _print_progress(packet_count, byte_count, wall_start)
 
     # Force flush the final partial window
-    if live.window_manager and live.window_manager.current:
-        # Provide a timestamp slightly after the end of the current window
-        final_ts = last_shifted_ts + live.window_manager.window_seconds + 0.1
-        features = live.window_manager.flush_if_ready(final_ts)
-        if features:
-            source_features = live.source_aggregator.get_features(
-                features["window_duration"]
-            )
-            communication_features = live.communication_context.snapshot()
+    if pipeline.window_manager and pipeline.window_manager.current:
+        final_ts = last_shifted_ts + pipeline.window_manager.window_seconds + 0.1
+        pipeline.flush_if_ready(final_ts)
 
-            live.source_aggregator.reset()
-            live.communication_context.reset()
-
-            live.evaluate_window(
-                features,
-                source_features,
-                final_ts,
-                communication_features,
-            )
-
-    live.evaluate_window = original_evaluate_window
-
-    final_alerts = live.alert_manager.active_alerts()
-    alert_events = 0
-    for a in final_alerts:
-        if a.alert_id not in initial_alerts:
-            alert_events += a.event_count
-        elif a.event_count > initial_alerts[a.alert_id]:
-            alert_events += (a.event_count - initial_alerts[a.alert_id])
+    alert_ids = sorted(pipeline.emitted_alert_ids)
+    pipeline.alert_manager.store.record_replay_run(
+        pcap_file=pcap_path,
+        alert_ids=alert_ids,
+        timestamp=time.time(),
+    )
 
     wall_elapsed = max(time.time() - wall_start, 1e-6)
-    return _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated, alert_events)
+    return _print_summary(
+        packet_count=packet_count,
+        byte_count=byte_count,
+        wall_elapsed=wall_elapsed,
+        windows_evaluated=pipeline.windows_evaluated,
+        alert_events=pipeline.alert_events_count,
+        flows_seen=len(pipeline.flow_engine.flows),
+        alert_ids=alert_ids,
+        pcap_path=pcap_path,
+    )
 
 
 def _print_progress(packet_count, byte_count, wall_start):
@@ -162,13 +143,18 @@ def _print_progress(packet_count, byte_count, wall_start):
     print(f"[progress] {packet_count} packets | {pps:.1f} pkt/s | {mbps:.2f} Mbps")
 
 
-def _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated=0, alert_events=0):
+def _print_summary(
+    packet_count,
+    byte_count,
+    wall_elapsed,
+    windows_evaluated=0,
+    alert_events=0,
+    flows_seen=0,
+    alert_ids=None,
+    pcap_path=None,
+):
     pps = packet_count / wall_elapsed
     mbps = (byte_count * 8 / 1_000_000) / wall_elapsed
-    # FlowEngine keys flows by 5-tuple; entries persist until they
-    # time out, so this is a good proxy for distinct flows observed
-    # during a bounded replay run.
-    flows_seen = len(live.flow_engine.flows)
 
     print()
     print("=" * 70)
@@ -190,6 +176,7 @@ def _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated=0, 
     print("=" * 70)
 
     return {
+        "pcap_file": pcap_path,
         "packet_count": packet_count,
         "byte_count": byte_count,
         "wall_elapsed": float(wall_elapsed),
@@ -199,6 +186,7 @@ def _print_summary(packet_count, byte_count, wall_elapsed, windows_evaluated=0, 
         "flow_rate": float(flows_seen / wall_elapsed) if flows_seen is not None else 0.0,
         "windows_evaluated": int(windows_evaluated),
         "alert_events": int(alert_events),
+        "alert_ids": list(alert_ids) if alert_ids is not None else [],
     }
 
 

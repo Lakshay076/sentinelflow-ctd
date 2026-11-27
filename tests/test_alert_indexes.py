@@ -1,48 +1,22 @@
-import os
-
 import psycopg
-from dotenv import load_dotenv
+
+from alerts.schema import POSTGRES_INDEX_STATEMENTS
+from config.database import resolve_database_config
 
 
-INDEXES = [
-    """
-    CREATE INDEX IF NOT EXISTS
-    idx_alerts_status
-    ON alerts(status)
-    """,
-
-    """
-    CREATE INDEX IF NOT EXISTS
-    idx_alerts_source_ip
-    ON alerts(source_ip)
-    """,
-
-    """
-    CREATE INDEX IF NOT EXISTS
-    idx_alerts_attack_type
-    ON alerts(attack_type)
-    """,
-
-    """
-    CREATE INDEX IF NOT EXISTS
-    idx_alerts_first_seen
-    ON alerts(first_seen)
-    """,
-]
+INDEXES = list(POSTGRES_INDEX_STATEMENTS)
 
 
 def main():
 
-    load_dotenv()
+    cfg = resolve_database_config("index_test")
 
-    database_url = os.getenv("DATABASE_URL")
-
-    if not database_url:
+    if cfg.backend != "postgres" or not cfg.database_url:
         raise RuntimeError(
             "DATABASE_URL is not configured"
         )
 
-    with psycopg.connect(database_url) as connection:
+    with psycopg.connect(cfg.database_url, connect_timeout=cfg.connect_timeout) as connection:
 
         with connection.cursor() as cursor:
 

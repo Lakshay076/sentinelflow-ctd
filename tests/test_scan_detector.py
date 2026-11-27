@@ -396,6 +396,93 @@ class TestPortScanDetector(unittest.TestCase):
         self.assertEqual(len(expired_features), 0, "All expired events must be purged")
         self.assertEqual(behavior_win.size(), 0, "Behavior window queue must be empty")
 
+    def test_benign_10_0_0_17_mixed_window_not_flagged(self):
+        """
+        Regression test for 10.0.0.17 in test_api.pcap:
+        A 1s slice with 1 SYN packet (syn_packet_ratio=1.0) combined with a 10s
+        rolling BehaviorWindow holding 9 destinations / 13 flows (mostly ACKs/DNS,
+        rolling_syn_ratio ~ 0.14) must NOT fabricate a horizontal PORT_SCAN.
+        """
+        aggregator = SourceAggregator()
+        behavior_win = BehaviorWindow(window_seconds=10.0)
+        engine = DetectorEngine(use_ml=False)
+
+        # Prior 9 seconds of benign ACK and DNS traffic from 10.0.0.17 (8 distinct hosts, 3 ports)
+        benign_events = [
+            (2.0, "203.0.113.11", "TCP", 443, False, True),
+            (3.0, "203.0.113.26", "TCP", 80, False, True),
+            (4.0, "8.8.8.8", "UDP", 53, False, False),
+            (5.0, "203.0.113.15", "TCP", 443, False, True),
+            (6.0, "203.0.113.20", "TCP", 80, True, False),
+            (6.2, "203.0.113.10", "TCP", 80, False, True),
+            (6.6, "203.0.113.18", "TCP", 443, False, True),
+            (6.7, "203.0.113.18", "TCP", 80, False, True),
+            (7.7, "203.0.113.9", "TCP", 80, False, True),
+            (9.4, "203.0.113.20", "TCP", 443, False, True),
+            (10.3, "203.0.113.8", "TCP", 80, False, True),
+        ]
+        for idx, (ts, dst, proto, dport, syn, ack) in enumerate(benign_events):
+            behavior_win.add_packet(
+                timestamp=ts,
+                src_ip="10.0.0.17",
+                dst_ip=dst,
+                protocol=proto,
+                packet_bytes=200,
+                src_port=40000 + idx,
+                dst_port=dport,
+                tcp_syn=syn,
+                tcp_ack=ack,
+            )
+
+        # Latest 1-second window has ONLY 1 SYN packet -> 1s syn_packet_ratio == 1.0
+        pkt_ts = 10.9
+        behavior_win.add_packet(
+            timestamp=pkt_ts,
+            src_ip="10.0.0.17",
+            dst_ip="203.0.113.10",
+            protocol="TCP",
+            packet_bytes=247,
+            src_port=48704,
+            dst_port=80,
+            tcp_syn=True,
+            tcp_ack=False,
+        )
+        aggregator.add_packet(
+            src_ip="10.0.0.17",
+            dst_ip="203.0.113.10",
+            protocol="TCP",
+            packet_bytes=247,
+            src_port=48704,
+            dst_port=80,
+            tcp_syn=True,
+            tcp_ack=False,
+            initiator_ip="10.0.0.17",
+            responder_ip="203.0.113.10",
+        )
+
+        source_features = aggregator.get_features(duration=1.0)
+        behavior_features = behavior_win.get_source_features(current_timestamp=11.0)
+        context = FeatureContext(
+            network={},
+            security={},
+            sources=source_features,
+            behavior=behavior_features,
+        )
+
+        combined = context.get_combined_source_features("10.0.0.17")
+        # Short-window features stay internally consistent (1s)
+        self.assertEqual(combined["unique_destinations"], 1)
+        self.assertEqual(combined["syn_packet_ratio"], 1.0)
+        # Rolling features stay internally consistent (10s)
+        self.assertGreaterEqual(combined["rolling_unique_destinations"], 8)
+        self.assertLess(combined["rolling_syn_ratio"], 0.25)
+
+        detections = engine.analyze_context(context)
+        scan_alerts = [
+            r for r in detections.get("10.0.0.17", []) if r.attack_type == "PORT_SCAN"
+        ]
+        self.assertEqual(len(scan_alerts), 0, "Mixed 1s/10s windows must not fabricate PORT_SCAN")
+
 
 def main():
     print("=" * 70)

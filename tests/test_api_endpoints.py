@@ -3,7 +3,7 @@ CTD — API & Frontend Logic Verification Test
 
 Directly tests the route handlers that supply data to the frontend:
 - Health & Stats
-- Simulation triggers for all 7 threat types
+- Simulation triggers for all 6 simulated threat types
 - Active & Historical alert feeds
 - Resolve-all functionality
 """
@@ -26,6 +26,16 @@ from api.routes.pcap import (
 )
 
 
+ATTACKS = [
+    "PORT_SCAN",
+    "SYN_FLOOD",
+    "C2_BEACONING",
+    "DGA_DNS_TUNNELLING",
+    "TLS_METADATA_ANOMALY",
+    "DATA_EXFILTRATION",
+]
+
+
 def test_health():
     res = health_check()
     assert res["status"] == "healthy"
@@ -40,16 +50,7 @@ def test_stats_initial():
 
 
 def test_simulate_all_attacks():
-    attacks = [
-        "PORT_SCAN",
-        "SYN_FLOOD",
-        "C2_BEACONING",
-        "DGA_DNS_TUNNELLING",
-        "TLS_METADATA_ANOMALY",
-        "DATA_EXFILTRATION",
-    ]
-
-    for attack in attacks:
+    for attack in ATTACKS:
         payload = simulate_attack(attack_type=attack)
 
         assert payload["status"] == "completed"
@@ -68,12 +69,13 @@ def test_simulate_all_attacks():
 
 
 def test_active_and_history():
+    expected_count = len(ATTACKS)
     active_data = get_active_alerts()
-    assert active_data["count"] >= 7, f"Expected >= 7 active alerts, got {active_data['count']}"
+    assert active_data["count"] >= expected_count, f"Expected >= {expected_count} active alerts, got {active_data['count']}"
     print(f"  ✓ get_active_alerts() -> {active_data['count']} active alerts ready for frontend display")
 
     hist_data = get_alert_history()
-    assert hist_data["count"] >= 7
+    assert hist_data["count"] >= expected_count, f"Expected >= {expected_count} history alerts, got {hist_data['count']}"
     print(f"  ✓ get_alert_history() -> {hist_data['count']} history alerts")
 
 

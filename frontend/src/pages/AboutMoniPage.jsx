@@ -6,7 +6,7 @@ import { AboutBackground } from "../components/AboutBackground";
 
 export function AboutMoniPage() {
   const threats = [
-    { name: "Volumetric / Protocol DDoS", desc: "Unusually high flow rates or packet counts dominating the link." },
+    { name: "Volumetric / Protocol DDoS", desc: "High-rate SYN Flood, UDP Flood, and distributed spoofed UDP flooding dominating the link." },
     { name: "Botnet C2 Beaconing", desc: "Regular, periodic small-payload connections to external destinations." },
     { name: "DGA and DNS Tunnelling", desc: "High entropy or structurally anomalous DNS queries and large TXT records." },
     { name: "TLS Metadata Anomalies", desc: "Suspicious cipher suites, mismatched SNI, or rare TLS extensions." },
@@ -302,10 +302,10 @@ export function AboutMoniPage() {
               <h4>CURRENT</h4>
               <ul>
                 <li>Streaming passive collector</li>
-                <li>Six threat detectors</li>
+                <li>Nine rule & ML threat detectors</li>
                 <li>ML anomaly corroboration</li>
                 <li>Incident correlation</li>
-                <li>PostgreSQL persistence</li>
+                <li>SQLite persistence</li>
                 <li>FastAPI</li>
                 <li>SOC dashboard</li>
                 <li>Controlled PCAP/replay validation</li>

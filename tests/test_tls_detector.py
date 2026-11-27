@@ -398,6 +398,56 @@ class TestTLSDetector(unittest.TestCase):
         self.assertTrue(len(tls_alerts) >= 1)
         self.assertEqual(tls_alerts[0].severity, "HIGH")
 
+    def test_splt_only_omits_client_hello_sentinel_and_uses_schema_default(self):
+        """SPLT-only traffic without ClientHello must NOT emit tls_avg_cipher_count=999.0."""
+        from inference.feature_schema import DEFAULT_VALUES, FEATURE_NAMES, features_to_vector
+
+        tracker = TLSTracker(window_seconds=300.0)
+        for i in range(4):
+            tracker.add_splt_packet(timestamp=100.0 + i * 0.5, src_ip="10.0.0.17", packet_bytes=200)
+
+        features = tracker.get_features(current_timestamp=102.0)["10.0.0.17"]
+        self.assertEqual(features["tls_client_hello_count"], 0)
+        self.assertNotIn("tls_avg_cipher_count", features)
+        self.assertNotIn("tls_avg_extension_count", features)
+        self.assertNotIn("tls_missing_sni_ratio", features)
+
+        vec = features_to_vector(features)
+        cipher_idx = FEATURE_NAMES.index("tls_avg_cipher_count")
+        self.assertEqual(vec[cipher_idx], DEFAULT_VALUES["tls_avg_cipher_count"])
+
+    def test_valid_client_hello_preserves_client_hello_features(self):
+        """Valid ClientHello observations must still populate cipher/extension/SNI/JA3/JA4 features."""
+        tracker = TLSTracker(window_seconds=300.0)
+        tracker.add_client_hello(
+            timestamp=100.0,
+            src_ip="10.0.0.55",
+            dst_ip="203.0.113.10",
+            ja3_hash="abc123",
+            cipher_count=2,
+            extension_count=1,
+            has_sni=False,
+            ja4_hash="def456",
+            ja4_full="t12i020100_def456_0000",
+        )
+        features = tracker.get_features(current_timestamp=101.0)["10.0.0.55"]
+        self.assertEqual(features["tls_client_hello_count"], 1)
+        self.assertEqual(features["tls_avg_cipher_count"], 2.0)
+        self.assertEqual(features["tls_avg_extension_count"], 1.0)
+        self.assertEqual(features["tls_missing_sni_ratio"], 1.0)
+        self.assertEqual(features["tls_max_same_ja3_to_one_dest"], 1)
+        self.assertEqual(features["tls_max_same_ja4_to_one_dest"], 1)
+
+    def test_no_tls_observations_returns_empty_and_normal_defaults(self):
+        """No TLS observations must return empty tracker map and safe ML defaults."""
+        from inference.feature_schema import DEFAULT_VALUES, FEATURE_NAMES, features_to_vector
+
+        tracker = TLSTracker(window_seconds=300.0)
+        self.assertEqual(tracker.get_features(current_timestamp=100.0), {})
+        vec = features_to_vector({})
+        cipher_idx = FEATURE_NAMES.index("tls_avg_cipher_count")
+        self.assertEqual(vec[cipher_idx], DEFAULT_VALUES["tls_avg_cipher_count"])
+
 
 def main():
     print("=" * 70)

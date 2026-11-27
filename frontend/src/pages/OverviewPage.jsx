@@ -41,7 +41,7 @@ export function OverviewPage({
           <div>
             <h2>Threat Matrix & Ingest Benchmarking</h2>
             <p>
-              Passive streaming threat detection across 7 specialized rule & AI
+              Passive streaming threat detection across 9 specialized rule & AI
               detectors with verified ground truth accuracy.
             </p>
           </div>

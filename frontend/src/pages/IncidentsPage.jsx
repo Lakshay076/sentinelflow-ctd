@@ -5,7 +5,7 @@ import { DETECTORS_CONFIG } from "../config";
 import { IncidentDrawer } from "../components/IncidentDrawer";
 import { SeverityBadge, StatusBadge } from "../components/Badges";
 import { IncidentTimeline3D } from "../components/IncidentTimeline3D";
-import { formatAttackType } from "../utils";
+import { formatAttackType, formatSourceIp } from "../utils";
 import { Reveal } from "../components/Reveal";
 
 export function IncidentsPage({
@@ -30,9 +30,15 @@ export function IncidentsPage({
 
   const [selectedIncident, setSelectedIncident] = useState(null);
 
+  const criticalSeverityCount = history.filter(
+    (alert) => (alert.severity || "").toUpperCase() === "CRITICAL"
+  ).length;
+
   const highSeverityCount = history.filter(
     (alert) => (alert.severity || "").toUpperCase() === "HIGH"
   ).length;
+
+  const criticalAndHighCount = criticalSeverityCount + highSeverityCount;
 
   const mediumSeverityCount = history.filter(
     (alert) => (alert.severity || "").toUpperCase() === "MEDIUM"
@@ -89,9 +95,13 @@ export function IncidentsPage({
           </div>
 
           <div className="incident-kpi-card">
-            <span>High Severity</span>
-            <strong>{highSeverityCount}</strong>
-            <small>{mediumSeverityCount} medium severity</small>
+            <span>Critical / High Severity</span>
+            <strong>{criticalAndHighCount}</strong>
+            <small>
+              {criticalSeverityCount > 0
+                ? `${criticalSeverityCount} critical, ${highSeverityCount} high`
+                : `${mediumSeverityCount} medium severity`}
+            </small>
           </div>
         </div>
       </Reveal>
@@ -256,7 +266,7 @@ export function IncidentsPage({
                     >
                       <td className="incident-id">#{alert.alert_id}</td>
 
-                      <td className="source">{alert.source_ip}</td>
+                      <td className="source" title={alert.source_ip}>{formatSourceIp(alert.source_ip)}</td>
 
                       <td>
                         <strong>{formatAttackType(alert.attack_type)}</strong>

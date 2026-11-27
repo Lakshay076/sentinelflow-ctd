@@ -2,6 +2,7 @@ import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { DETECTORS_CONFIG } from "../config";
 import { SeverityBadge, StatusBadge } from "./Badges";
+import { formatSourceIp } from "../utils";
 
 export function AlertCard({ alert }) {
   const config =
@@ -30,7 +31,7 @@ export function AlertCard({ alert }) {
 
         <div className="alert-meta">
           <span>
-            Source IP: <strong>{alert.source_ip}</strong>
+            Source IP: <strong title={alert.source_ip}>{formatSourceIp(alert.source_ip)}</strong>
           </span>
           <span>
             Confidence:{" "}

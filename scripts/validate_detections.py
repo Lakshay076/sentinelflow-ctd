@@ -42,17 +42,46 @@ def load_ground_truth(path: str):
         return json.load(f)
 
 
-def validate(ground_truth_path: str):
+def _compute_pr_f1(tp: int, fp: int, fn: int):
+    precision = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
+    recall = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else float("nan")
+    )
+    return precision, recall, f1
+
+
+def validate(
+    ground_truth_path: str,
+    alert_ids=None,
+    use_latest_replay: bool = True,
+):
     gt = load_ground_truth(ground_truth_path)
     expected = gt["expected_detections"]
     benign_ips = set(gt.get("benign_ips", []))
+    pcap_file = gt.get("pcap_file")
 
     store = AlertStore()
-    all_alerts = store.all()
+    scope = "all_alerts"
+
+    if alert_ids is not None:
+        evaluated_alerts = store.get_many(alert_ids)
+        scope = "explicit_alert_ids"
+    elif use_latest_replay:
+        latest_run = store.get_latest_replay_run(pcap_file=pcap_file)
+        if latest_run is not None:
+            evaluated_alerts = store.get_many(latest_run["alert_ids"])
+            scope = f"latest_replay (run #{latest_run['run_id']})"
+        else:
+            evaluated_alerts = store.all()
+    else:
+        evaluated_alerts = store.all()
 
     # index actual alerts by (source_ip, attack_type) -> best confidence seen
     actual = {}
-    for alert in all_alerts:
+    for alert in evaluated_alerts:
         key = (alert.source_ip, alert.attack_type)
         actual[key] = max(actual.get(key, 0.0), alert.confidence)
 
@@ -60,7 +89,8 @@ def validate(ground_truth_path: str):
     print("CTD -- DETECTION VALIDATION REPORT")
     print("=" * 72)
     print(f"Ground truth file : {ground_truth_path}")
-    print(f"Total alerts in DB: {len(all_alerts)}")
+    print(f"Validation scope  : {scope}")
+    print(f"Alerts evaluated  : {len(evaluated_alerts)}")
     print()
 
     true_positives = []
@@ -78,26 +108,29 @@ def validate(ground_truth_path: str):
             false_negatives.append(item)
             print(f"{ip:<14} {attack_type:<24} {'MISSED':<10} --")
 
-    # false positives: alerts fired on IPs we told the generator were benign
-    false_positives = [
-        alert for alert in all_alerts if alert.source_ip in benign_ips
+    # False positives on benign IPs: track BOTH individual alert records and unique benign IPs.
+    false_positive_alerts = [
+        alert for alert in evaluated_alerts if alert.source_ip in benign_ips
     ]
+    false_positive_ips = sorted({alert.source_ip for alert in false_positive_alerts})
 
     print()
     print("-" * 72)
-    print(f"False positives (benign IPs incorrectly flagged): {len(false_positives)}")
-    for alert in false_positives:
+    print(
+        f"False positive alerts (benign IPs): {len(false_positive_alerts)} "
+        f"across {len(false_positive_ips)} unique benign IP(s)"
+    )
+    for alert in false_positive_alerts:
         print(f"  {alert.source_ip:<14} flagged as {alert.attack_type} "
               f"(confidence {alert.confidence:.2f})")
 
     tp = len(true_positives)
     fn = len(false_negatives)
-    fp = len(false_positives)
+    fp_alerts = len(false_positive_alerts)
+    fp_ips = len(false_positive_ips)
 
-    precision = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
-    recall = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
-    f1 = (2 * precision * recall / (precision + recall)
-          if (precision + recall) > 0 else float("nan"))
+    alert_precision, recall, alert_f1 = _compute_pr_f1(tp, fp_alerts, fn)
+    ip_precision, _, ip_f1 = _compute_pr_f1(tp, fp_ips, fn)
 
     print()
     print("=" * 72)
@@ -105,10 +138,21 @@ def validate(ground_truth_path: str):
     print("=" * 72)
     print(f"True Positives  : {tp} / {len(expected)} expected attacks caught")
     print(f"False Negatives : {fn} (attacks missed)")
-    print(f"False Positives : {fp} (benign flagged as malicious)")
-    print(f"Precision       : {precision:.2%}" if precision == precision else "Precision       : n/a")
+    print(f"FP (Alerts)     : {fp_alerts} alert(s) on benign IPs")
+    print(f"FP (Unique IPs) : {fp_ips} unique benign IP(s) flagged")
+    print(
+        f"Precision (Alert): {alert_precision:.2%}"
+        if alert_precision == alert_precision
+        else "Precision (Alert): n/a"
+    )
+    print(
+        f"Precision (IP)   : {ip_precision:.2%}"
+        if ip_precision == ip_precision
+        else "Precision (IP)   : n/a"
+    )
     print(f"Recall          : {recall:.2%}" if recall == recall else "Recall          : n/a")
-    print(f"F1 Score        : {f1:.2%}" if f1 == f1 else "F1 Score        : n/a")
+    print(f"F1 (Alert)      : {alert_f1:.2%}" if alert_f1 == alert_f1 else "F1 (Alert)      : n/a")
+    print(f"F1 (IP)         : {ip_f1:.2%}" if ip_f1 == ip_f1 else "F1 (IP)         : n/a")
     print("=" * 72)
     print("Copy the Precision / Recall / F1 lines above directly into your")
     print("SIH report as your measured detection accuracy.")
@@ -116,14 +160,21 @@ def validate(ground_truth_path: str):
 
     return {
         "ground_truth_path": ground_truth_path,
-        "total_alerts": len(all_alerts),
+        "scope": scope,
+        "total_alerts": len(evaluated_alerts),
         "true_positives": tp,
         "expected_attacks": len(expected),
         "false_negatives": fn,
-        "false_positives": fp,
-        "precision": float(precision) if precision == precision else None,
+        "false_positives": fp_alerts,
+        "false_positive_alerts": fp_alerts,
+        "false_positive_ips": fp_ips,
+        "precision": float(alert_precision) if alert_precision == alert_precision else None,
+        "alert_precision": float(alert_precision) if alert_precision == alert_precision else None,
+        "ip_precision": float(ip_precision) if ip_precision == ip_precision else None,
         "recall": float(recall) if recall == recall else None,
-        "f1": float(f1) if f1 == f1 else None,
+        "f1": float(alert_f1) if alert_f1 == alert_f1 else None,
+        "alert_f1": float(alert_f1) if alert_f1 == alert_f1 else None,
+        "ip_f1": float(ip_f1) if ip_f1 == ip_f1 else None,
         "detailed_results": [
             {
                 "source_ip": item["source_ip"],
@@ -144,8 +195,13 @@ def main():
         "ground_truth_path",
         help="Path to the *.ground_truth.json file produced by generate_synthetic_traffic.py"
     )
+    parser.add_argument(
+        "--all-alerts",
+        action="store_true",
+        help="Evaluate against all alerts in the database instead of scoping to the latest replay",
+    )
     args = parser.parse_args()
-    validate(args.ground_truth_path)
+    validate(args.ground_truth_path, use_latest_replay=not args.all_alerts)
 
 
 if __name__ == "__main__":

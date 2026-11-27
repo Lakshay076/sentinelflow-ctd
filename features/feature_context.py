@@ -165,11 +165,18 @@ class FeatureContext:
             )
 
 
-        for key, value in behavior.items():
-            if key not in combined:
-                combined[key] = value
-            elif isinstance(value, (int, float)) and isinstance(combined.get(key), (int, float)):
-                combined[key] = max(combined[key], value)
+        # When an instantaneous observation window is active (`self.sources`
+        # populated, `window_duration` set, or explicit 0-packet window),
+        # keep rolling metrics isolated to `rolling_*` / `exfil_*` so an
+        # inactive source never inherits 10s totals as 1s instantaneous rates.
+        if (
+            not self.sources
+            and "window_duration" not in self.network
+            and self.network.get("packets", 1) > 0
+        ):
+            for key, value in behavior.items():
+                if key not in combined:
+                    combined[key] = value
 
         for extra in (
             self.beacon.get(source_ip, {}),

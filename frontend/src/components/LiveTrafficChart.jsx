@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,6 +10,7 @@ import {
   Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { computeXAxisDomain } from '../utils';
 
 ChartJS.register(
   CategoryScale,
@@ -23,14 +24,23 @@ ChartJS.register(
 
 export function LiveTrafficChart({ points, maxPps }) {
   const chartRef = useRef(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const now = Date.now();
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [points]);
+
+  const sortedPoints = [...(points || [])].sort(
+    (a, b) => (a?.timestamp || 0) - (b?.timestamp || 0)
+  );
+  const xDomain = computeXAxisDomain(sortedPoints, nowMs);
+
   const data = {
     datasets: [
       {
         label: 'Packets / Sec',
-        data: points.map(p => ({
-          x: p.timestamp ? p.timestamp * 1000 : now,
+        data: sortedPoints.map(p => ({
+          x: p.timestamp ? p.timestamp * 1000 : nowMs,
           y: p.packets_per_second || 0
         })),
         borderColor: '#8b5cf6', // var(--brand-violet)
@@ -60,8 +70,8 @@ export function LiveTrafficChart({ points, maxPps }) {
       x: {
         type: 'linear',
         display: false, // Hide X axis line and labels as they are drawn in HTML
-        min: now - 60000,
-        max: now,
+        min: xDomain.min,
+        max: xDomain.max,
       },
       y: {
         display: true,
