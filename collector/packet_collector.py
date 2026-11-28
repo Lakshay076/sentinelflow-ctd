@@ -12,6 +12,7 @@ from detectors.incident_correlator import IncidentCorrelator
 from features.behavior_window import BehaviorWindow
 from alerts.alert_manager import AlertManager
 from telemetry.live_metrics import live_metrics
+from supervised.feature_extractor import LiveFlowTracker
 
 
 # STAGE 2, 3, 4 ADDITIONS:
@@ -67,6 +68,9 @@ dns_tracker = DNSTracker(window_seconds=30.0)
 # 5-minute rolling window, to spot non-browser-like TLS clients.
 tls_tracker = TLSTracker(window_seconds=300.0)
 
+# PHASE 3: tracks flow-level statistics in CIC-IDS2017 schema for supervised triage
+live_flow_tracker = LiveFlowTracker(timeout_seconds=60.0)
+
 pipeline_lock = threading.Lock()
 
 
@@ -112,11 +116,13 @@ def evaluate_window(
     )
 
     for source_ip, results in detections.items():
+        candidate_flows = live_flow_tracker.get_candidate_flows_for_source(source_ip)
         alert_manager.process(
             source_ip=source_ip,
             detections=results,
             timestamp=timestamp,
             communication_context=communication_context.get(source_ip),
+            candidate_flows=candidate_flows,
         )
 
     resolved_alerts = alert_manager.resolve_stale(timestamp=timestamp)
@@ -335,6 +341,35 @@ def process_packet(packet):
 
         flow = flow_engine.process_packet(record)
 
+        header_len = 20
+        payload_len = 0
+        window_sz = None
+        if TCP in packet:
+            header_len = (packet[TCP].dataofs * 4) if getattr(packet[TCP], "dataofs", None) else 20
+            payload_len = len(packet[TCP].payload)
+            window_sz = getattr(packet[TCP], "window", None)
+        elif UDP in packet:
+            header_len = 8
+            payload_len = len(packet[UDP].payload)
+        else:
+            ip_hlen = (ip.ihl * 4) if getattr(ip, "ihl", None) else 20
+            header_len = ip_hlen
+            payload_len = max(0, len(packet) - ip_hlen)
+
+        live_flow_tracker.process_packet(
+            timestamp=timestamp,
+            src_ip=ip.src,
+            dst_ip=ip.dst,
+            src_port=src_port or 0,
+            dst_port=dst_port or 0,
+            protocol=str(protocol),
+            packet_length=len(packet),
+            tcp_flags=tcp_flags,
+            header_length=header_len,
+            payload_length=payload_len,
+            window_size=window_sz,
+        )
+
         # DNS request/response flows are excluded from C2 beacon
         # timing analysis. Periodic DNS queries can otherwise
         # look like beacon check-ins because they repeatedly
@@ -419,6 +454,7 @@ def background_flusher():
             alert_manager.resolve_stale(
                 timestamp=now
             )
+            live_flow_tracker.remove_expired(now)
 
             features = window_manager.flush_if_ready(now)
 

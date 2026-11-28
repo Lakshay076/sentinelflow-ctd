@@ -56,6 +56,7 @@ def get_stats():
     ]
 
     attack_types = {}
+    predicted_threats = {}
 
     for alert in alerts:
 
@@ -68,11 +69,28 @@ def get_stats():
             ) + 1
         )
 
+        if alert.predicted_threat:
+            predicted_threats[alert.predicted_threat] = (
+                predicted_threats.get(alert.predicted_threat, 0) + 1
+            )
+
+    try:
+        from supervised.classifier import get_threat_classifier
+        clf = get_threat_classifier()
+        classifier_available = bool(clf and clf.is_available)
+        model_version = clf._artifacts["version"] if (classifier_available and clf._artifacts) else None
+    except Exception:
+        classifier_available = False
+        model_version = None
+
     return {
         "total_alerts": len(alerts),
         "active_alerts": len(active),
         "resolved_alerts": len(resolved),
         "attack_types": attack_types,
+        "predicted_threats": predicted_threats,
+        "classifier_available": classifier_available,
+        "classifier_model_version": model_version,
     }
 @app.get("/api/health")
 def health_check():

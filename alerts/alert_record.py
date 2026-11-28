@@ -43,6 +43,15 @@ class AlertRecord:
 
     resolved_at: Optional[float] = None
 
+    # Supervised Threat Classification Fields (Phase 3)
+    predicted_threat: Optional[str] = None
+    threat_confidence: Optional[float] = None
+    alternative_predictions: List[dict] = field(default_factory=list)
+    classification_status: Optional[str] = None
+    model_version: Optional[str] = None
+    feature_schema_version: Optional[str] = None
+    supporting_features: Optional[dict] = None
+
     def duration(self) -> float:
         """
         Return the duration of the incident.
@@ -61,6 +70,13 @@ class AlertRecord:
         severity: str,
         confidence: float,
         reasons: List[str],
+        predicted_threat: Optional[str] = None,
+        threat_confidence: Optional[float] = None,
+        alternative_predictions: Optional[List[dict]] = None,
+        classification_status: Optional[str] = None,
+        model_version: Optional[str] = None,
+        feature_schema_version: Optional[str] = None,
+        supporting_features: Optional[dict] = None,
     ):
         """
         Update an existing active incident.
@@ -78,6 +94,21 @@ class AlertRecord:
         self.event_count += 1
 
         self.reasons = reasons
+
+        if predicted_threat is not None:
+            self.predicted_threat = predicted_threat
+        if threat_confidence is not None:
+            self.threat_confidence = threat_confidence
+        if alternative_predictions is not None:
+            self.alternative_predictions = alternative_predictions
+        if classification_status is not None:
+            self.classification_status = classification_status
+        if model_version is not None:
+            self.model_version = model_version
+        if feature_schema_version is not None:
+            self.feature_schema_version = feature_schema_version
+        if supporting_features is not None:
+            self.supporting_features = supporting_features
 
     def resolve(self, timestamp: float):
         """
@@ -110,4 +141,11 @@ class AlertRecord:
             "initiator_ip": self.initiator_ip,
             "responder_ips": self.responder_ips,
             "related_flows": self.related_flows,
+            "predicted_threat": self.predicted_threat,
+            "threat_confidence": self.threat_confidence,
+            "alternative_predictions": self.alternative_predictions,
+            "classification_status": self.classification_status,
+            "model_version": self.model_version,
+            "feature_schema_version": self.feature_schema_version,
+            "supporting_features": self.supporting_features,
         }

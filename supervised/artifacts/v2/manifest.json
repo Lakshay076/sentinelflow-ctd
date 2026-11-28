@@ -1,0 +1,43 @@
+{
+  "version": "v2",
+  "schema_version": "1.0",
+  "model_type": "RandomForestClassifier",
+  "comparison_model_type": "LogisticRegression",
+  "dataset": "CIC-IDS2017",
+  "feature_count": 77,
+  "label_classes": [
+    "BENIGN",
+    "BOTNET_C2",
+    "BRUTE_FORCE",
+    "DOS_DDOS",
+    "INFILTRATION",
+    "OTHER_ATTACK",
+    "RECONNAISSANCE",
+    "WEB_ATTACK"
+  ],
+  "train_rows": 2059247,
+  "test_rows": 491914,
+  "training_time_s": 127.26,
+  "rf_params": {
+    "n_estimators": 80,
+    "max_depth": 24,
+    "min_samples_leaf": 4,
+    "class_weight": "balanced_subsample",
+    "n_jobs": 2,
+    "random_state": 42,
+    "verbose": 0,
+    "max_samples": 100000
+  },
+  "comparison_params": {
+    "max_iter": 400,
+    "class_weight": "balanced",
+    "solver": "lbfgs",
+    "random_state": 42,
+    "C": 1.0
+  },
+  "preprocessing": "SimpleImputer(median) + RobustScaler",
+  "class_imbalance_handling": "RandomForest class_weight='balanced_subsample'; LogisticRegression class_weight='balanced'. No oversampling.",
+  "split_strategy": "per_label_capture_order_holdout",
+  "training_notes": "Preprocessor is fit on training rows only. Features are float32. When the training set is larger than 100,000 rows, each random forest tree is grown on a 100,000-row sample with max_depth 24, using two workers, so the model fits in 8 GB of memory. Evaluation still uses the full held-out test set. Logistic regression is the linear comparison model and sees every training row.",
+  "timestamp_utc": "2026-11-27T22:22:27Z"
+}

@@ -91,6 +91,95 @@ export function IncidentDrawer({ alert, onClose }) {
           </p>
         </div>
 
+        {(alert.predicted_threat || alert.classification_status) && (
+          <div className="incident-drawer-section">
+            <div className="incident-drawer-section-title">
+              <span>Supervised Threat Classification</span>
+              <strong>
+                {alert.predicted_threat || alert.classification_status}
+              </strong>
+            </div>
+
+            <div className="incident-detail-grid" style={{ marginBottom: "10px" }}>
+              <div>
+                <span>Predicted Category</span>
+                <strong>{alert.predicted_threat || "—"}</strong>
+              </div>
+              <div>
+                <span>Triage Confidence</span>
+                <strong>
+                  {alert.threat_confidence != null
+                    ? `${Math.round(alert.threat_confidence * 100)}%`
+                    : "—"}
+                </strong>
+              </div>
+              <div>
+                <span>Status</span>
+                <strong>{alert.classification_status || "—"}</strong>
+              </div>
+              <div>
+                <span>Model / Schema</span>
+                <strong className="incident-mono">
+                  {alert.model_version || "—"}
+                  {alert.feature_schema_version
+                    ? ` / ${alert.feature_schema_version}`
+                    : ""}
+                </strong>
+              </div>
+            </div>
+
+            {alert.threat_confidence != null && (
+              <div className="incident-confidence-track" style={{ marginBottom: "10px" }}>
+                <div
+                  className="incident-confidence-fill"
+                  style={{
+                    width: `${Math.round(alert.threat_confidence * 100)}%`,
+                    background:
+                      alert.predicted_threat === "UNCLASSIFIED"
+                        ? "var(--text-muted)"
+                        : "#10b981",
+                  }}
+                />
+              </div>
+            )}
+
+            {alert.alternative_predictions && alert.alternative_predictions.length > 0 && (
+              <div style={{ marginTop: "8px" }}>
+                <span className="incident-drawer-muted" style={{ display: "block", marginBottom: "4px" }}>
+                  Top Predictions:
+                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {alert.alternative_predictions.map((alt, idx) => (
+                    <span key={idx} className="attack-code-tag">
+                      {alt.category || alt.label}:{" "}
+                      {Math.round((alt.probability ?? alt.confidence ?? 0) * 100)}%
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {alert.supporting_features && Object.keys(alert.supporting_features).length > 0 && (
+              <div style={{ marginTop: "10px" }}>
+                <span className="incident-drawer-muted" style={{ display: "block", marginBottom: "4px" }}>
+                  Top Supporting Flow Features:
+                </span>
+                <ul className="incident-evidence-list">
+                  {Object.entries(alert.supporting_features).map(([feat, val]) => (
+                    <li key={feat}>
+                      <CheckCircle2 size={14} />
+                      <span>
+                        <strong>{feat}</strong>:{" "}
+                        {typeof val === "number" ? val.toFixed(4) : String(val)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="incident-drawer-section">
           <div className="incident-drawer-section-title">
             <span>Supporting Evidence</span>

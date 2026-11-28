@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from alerts.alert_record import AlertRecord
 from alerts.alert_store import AlertStore
@@ -16,6 +16,7 @@ class AlertManager:
     3. Resolve inactive incidents.
     4. Preserve incident history.
     5. Enrich incidents with observed communication relationships.
+    6. Perform supervised ML threat classification on eligible anomalies.
 
     This component is detection-only.
 
@@ -29,6 +30,7 @@ class AlertManager:
     def __init__(
         self,
         resolve_after: float = 300.0,
+        classifier: Optional[Any] = None,
     ):
 
         if resolve_after <= 0:
@@ -39,6 +41,15 @@ class AlertManager:
         self.resolve_after = resolve_after
 
         self.store = AlertStore()
+
+        if classifier is not None:
+            self.classifier = classifier
+        else:
+            try:
+                from supervised.classifier import get_threat_classifier
+                self.classifier = get_threat_classifier()
+            except Exception:
+                self.classifier = None
 
     @staticmethod
     def _relationship_fields(
@@ -81,12 +92,16 @@ class AlertManager:
         detections: List[DetectionResult],
         timestamp: float,
         communication_context: Optional[Dict] = None,
+        candidate_flows: Optional[List[Any]] = None,
     ) -> List[AlertRecord]:
         """
         Process detector results for one source.
 
         communication_context contains the observed relationship for this
         source in the current observation window.
+
+        candidate_flows contains FlowFeatureAccumulators for this source,
+        used by the supervised classifier to categorize anomalies.
 
         Returns the alerts that were created or updated.
         """
@@ -106,6 +121,42 @@ class AlertManager:
             if not detection.detected:
                 continue
 
+            # -------------------------------------------------------------
+            # PHASE 3: Supervised threat classification on eligible anomalies
+            # -------------------------------------------------------------
+            # Eligible anomalies: ML_ANOMALY detections from Stage 1 Isolation Forest.
+            if detection.attack_type == "ML_ANOMALY":
+                if not self.classifier or not getattr(self.classifier, "is_available", False):
+                    detection.classification_status = "MODEL_UNAVAILABLE"
+                elif not candidate_flows:
+                    detection.classification_status = "NO_CANDIDATE_FLOWS"
+                else:
+                    try:
+                        clf_result = self.classifier.classify_flows(candidate_flows)
+                        if clf_result:
+                            detection.predicted_threat = clf_result.get("predicted_threat")
+                            detection.threat_confidence = clf_result.get("confidence")
+                            detection.alternative_predictions = clf_result.get("alternative_predictions", [])
+                            detection.classification_status = clf_result.get("classification_status")
+                            detection.model_version = clf_result.get("model_version")
+                            detection.feature_schema_version = clf_result.get("feature_schema_version")
+                            detection.supporting_features = clf_result.get("supporting_features")
+
+                            pred = detection.predicted_threat
+                            conf = detection.threat_confidence
+                            status = detection.classification_status
+                            if status == "CLASSIFIED" and pred:
+                                expl = f"Supervised ML classification: {pred} (confidence: {conf:.0%})"
+                                if expl not in detection.reasons:
+                                    detection.reasons.append(expl)
+                            elif status == "LOW_CONFIDENCE" or pred == "UNCLASSIFIED":
+                                expl = f"Supervised ML classification: UNCLASSIFIED (low confidence: {conf:.0%})"
+                                if expl not in detection.reasons:
+                                    detection.reasons.append(expl)
+                    except Exception:
+                        # The classifier must never suppress an existing alert if inference fails
+                        detection.classification_status = "ERROR"
+
             existing = self.store.find_active(
                 source_ip=source_ip,
                 attack_type=detection.attack_type,
@@ -123,6 +174,13 @@ class AlertManager:
                     initiator_ip=initiator_ip,
                     responder_ips=responder_ips,
                     related_flows=related_flows,
+                    predicted_threat=detection.predicted_threat,
+                    threat_confidence=detection.threat_confidence,
+                    alternative_predictions=detection.alternative_predictions,
+                    classification_status=detection.classification_status,
+                    model_version=detection.model_version,
+                    feature_schema_version=detection.feature_schema_version,
+                    supporting_features=detection.supporting_features,
                 )
 
             else:
@@ -137,6 +195,13 @@ class AlertManager:
                     initiator_ip=initiator_ip,
                     responder_ips=responder_ips,
                     related_flows=related_flows,
+                    predicted_threat=detection.predicted_threat,
+                    threat_confidence=detection.threat_confidence,
+                    alternative_predictions=detection.alternative_predictions,
+                    classification_status=detection.classification_status,
+                    model_version=detection.model_version,
+                    feature_schema_version=detection.feature_schema_version,
+                    supporting_features=detection.supporting_features,
                 )
 
                 if updated_alert is None:

@@ -30,8 +30,11 @@ def get_demo_config():
     return DEMO_LAB_CONFIG
 
 @router.get("/active")
-def get_active_alerts():
+def get_active_alerts(predicted_threat: Optional[str] = None):
     alerts = store.active()
+    if predicted_threat:
+        target = predicted_threat.upper()
+        alerts = [a for a in alerts if (a.predicted_threat or "").upper() == target]
 
     return {
         "count": len(alerts),
@@ -43,8 +46,11 @@ def get_active_alerts():
 
 
 @router.get("/history")
-def get_alert_history():
+def get_alert_history(predicted_threat: Optional[str] = None):
     alerts = store.all()
+    if predicted_threat:
+        target = predicted_threat.upper()
+        alerts = [a for a in alerts if (a.predicted_threat or "").upper() == target]
 
     return {
         "count": len(alerts),
@@ -131,6 +137,49 @@ def clear_all_alerts():
     return {
         "status": "success",
         "cleared_count": cleared_count,
+    }
+
+
+@router.get("/classifier/status")
+def get_classifier_status():
+    """Return supervised classifier availability, version, and real evaluation summary."""
+    from supervised.classifier import get_threat_classifier
+    from supervised.feature_extractor import FEATURE_SCHEMA_VERSION
+    from supervised.label_mapping import ORDERED_CATEGORIES, UNKNOWN_CATEGORY
+    import json
+    import os
+
+    clf = get_threat_classifier()
+    available = bool(clf and clf.is_available)
+    manifest = {}
+    eval_summary = {}
+
+    if available and clf._artifacts:
+        version_dir = os.path.join(clf.artifacts_dir, clf._artifacts["version"])
+        manifest_path = os.path.join(version_dir, "manifest.json")
+        eval_path = os.path.join(version_dir, "evaluation_report.json")
+        if os.path.exists(manifest_path):
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+            except Exception:
+                pass
+        if os.path.exists(eval_path):
+            try:
+                with open(eval_path, "r") as f:
+                    report = json.load(f)
+                    eval_summary = report.get("metrics", {})
+            except Exception:
+                pass
+
+    return {
+        "available": available,
+        "model_version": clf._artifacts["version"] if (available and clf._artifacts) else None,
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "confidence_threshold": clf.threshold if clf else None,
+        "categories": list(ORDERED_CATEGORIES) + [UNKNOWN_CATEGORY],
+        "manifest": manifest,
+        "evaluation_metrics": eval_summary,
     }
 
 

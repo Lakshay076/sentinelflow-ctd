@@ -14,6 +14,7 @@ from features.beacon_tracker import BeaconTracker
 from features.dns_tracker import DNSTracker
 from features.tls_tracker import TLSTracker
 from alerts.alert_store import AlertStore
+from supervised.feature_extractor import LiveFlowTracker
 
 
 ATTACK_TYPES = {
@@ -43,6 +44,7 @@ def reset_demo_pipeline():
     collector.beacon_tracker = BeaconTracker(window_seconds=300.0)
     collector.dns_tracker = DNSTracker(window_seconds=30.0)
     collector.tls_tracker = TLSTracker(window_seconds=300.0)
+    collector.live_flow_tracker = LiveFlowTracker(timeout_seconds=60.0)
 
 
 def tcp_packet(src, dst, sport, dport, flags="S", payload=None):

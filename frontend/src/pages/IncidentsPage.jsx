@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { RotateCcw, CheckCircle, Trash2 } from "lucide-react";
+import { CheckCheck, CheckCircle, Trash2 } from "lucide-react";
 import { AlertCard } from "../components/AlertCard";
 import { DETECTORS_CONFIG } from "../config";
 import { IncidentDrawer } from "../components/IncidentDrawer";
@@ -157,9 +157,10 @@ export function IncidentsPage({
                   className="resolve-threats-btn-small"
                   onClick={onResolveAll}
                   disabled={simulating !== null}
+                  title="Mark all active threats as resolved"
                 >
-                  <RotateCcw size={13} />
-                  Resolve All
+                  <CheckCheck size={15} strokeWidth={2.2} />
+                  <span>Resolve All</span>
                 </button>
               )}
 
@@ -208,9 +209,10 @@ export function IncidentsPage({
                   className="clear-history-btn-secondary"
                   onClick={onClearHistory}
                   disabled={simulating !== null}
+                  title="Delete all resolved historical incidents"
                 >
-                  <Trash2 size={13} />
-                  Clear History
+                  <Trash2 size={15} strokeWidth={2} />
+                  <span>Clear History</span>
                 </button>
               )}
 
@@ -260,6 +262,14 @@ export function IncidentsPage({
 
                       <td>
                         <strong>{formatAttackType(alert.attack_type)}</strong>
+                        {alert.predicted_threat && (
+                          <div style={{ fontSize: "11px", color: "#34d399", marginTop: "2px" }}>
+                            AI: {alert.predicted_threat}
+                            {alert.threat_confidence != null
+                              ? ` (${Math.round(alert.threat_confidence * 100)}%)`
+                              : ""}
+                          </div>
+                        )}
                       </td>
 
                       <td>

@@ -41,3 +41,24 @@ Thumbs.db
 # Local packet captures
 data/*.pcap
 data/*.pcapng
+
+# CIC-IDS2017 dataset — large files, never commit
+data/cic_ids2017/raw/
+data/cic_ids2017/processed/
+data/cic_ids2017/*.zip
+
+# Supervised classifier artifacts (large model files)
+supervised/artifacts/*/model.joblib
+supervised/artifacts/*/preprocessor.joblib
+supervised/artifacts/*/label_encoder.joblib
+supervised/artifacts/*/comparison_model_lr.joblib
+# Keep manifests, feature_names.json, evaluation_report.json in git
+# so the team can see metrics without downloading model files.
+
+# Supervised reports (generated, not source)
+supervised/reports/
+
+# Processed / intermediate dataset files
+data/**/*.csv
+data/**/*.parquet
+data/**/*.h5

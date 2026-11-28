@@ -64,11 +64,29 @@ class AlertStore:
                                 initiator_ip TEXT,
                                 responder_ips JSONB,
                                 related_flows JSONB,
+                                predicted_threat TEXT,
+                                threat_confidence REAL,
+                                alternative_predictions JSONB,
+                                classification_status TEXT,
+                                model_version TEXT,
+                                feature_schema_version TEXT,
+                                supporting_features JSONB,
                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                             );
                             """
                         )
+                        pg_migrations = [
+                            ("predicted_threat", "TEXT"),
+                            ("threat_confidence", "REAL"),
+                            ("alternative_predictions", "JSONB"),
+                            ("classification_status", "TEXT"),
+                            ("model_version", "TEXT"),
+                            ("feature_schema_version", "TEXT"),
+                            ("supporting_features", "JSONB"),
+                        ]
+                        for col_name, col_type in pg_migrations:
+                            cursor.execute(f"ALTER TABLE alerts ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
                     conn.commit()
                 self.use_postgres = True
             except Exception as e:
@@ -98,6 +116,13 @@ class AlertStore:
                     initiator_ip TEXT,
                     responder_ips TEXT,
                     related_flows TEXT,
+                    predicted_threat TEXT,
+                    threat_confidence REAL,
+                    alternative_predictions TEXT,
+                    classification_status TEXT,
+                    model_version TEXT,
+                    feature_schema_version TEXT,
+                    supporting_features TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -105,12 +130,23 @@ class AlertStore:
             )
             
             # Handle migration of existing SQLite databases
-            try:
-                cursor.execute("ALTER TABLE alerts ADD COLUMN initiator_ip TEXT")
-                cursor.execute("ALTER TABLE alerts ADD COLUMN responder_ips TEXT")
-                cursor.execute("ALTER TABLE alerts ADD COLUMN related_flows TEXT")
-            except sqlite3.OperationalError:
-                pass # Columns already exist
+            migration_columns = [
+                ("initiator_ip", "TEXT"),
+                ("responder_ips", "TEXT"),
+                ("related_flows", "TEXT"),
+                ("predicted_threat", "TEXT"),
+                ("threat_confidence", "REAL"),
+                ("alternative_predictions", "TEXT"),
+                ("classification_status", "TEXT"),
+                ("model_version", "TEXT"),
+                ("feature_schema_version", "TEXT"),
+                ("supporting_features", "TEXT"),
+            ]
+            for col_name, col_type in migration_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE alerts ADD COLUMN {col_name} {col_type}")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
                 
             conn.commit()
 
@@ -132,6 +168,13 @@ class AlertStore:
         initiator_ip: Optional[str] = None,
         responder_ips: Optional[List[str]] = None,
         related_flows: Optional[List[dict]] = None,
+        predicted_threat: Optional[str] = None,
+        threat_confidence: Optional[float] = None,
+        alternative_predictions: Optional[List[dict]] = None,
+        classification_status: Optional[str] = None,
+        model_version: Optional[str] = None,
+        feature_schema_version: Optional[str] = None,
+        supporting_features: Optional[dict] = None,
     ) -> AlertRecord:
         if self.use_postgres:
             try:
@@ -140,11 +183,15 @@ class AlertStore:
                 INSERT INTO alerts (
                     source_ip, attack_type, severity, confidence,
                     first_seen, last_seen, status, event_count, reasons,
-                    initiator_ip, responder_ips, related_flows
+                    initiator_ip, responder_ips, related_flows,
+                    predicted_threat, threat_confidence, alternative_predictions,
+                    classification_status, model_version, feature_schema_version,
+                    supporting_features
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, 'ACTIVE', 1, %s,
-                    %s, %s, %s
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING alert_id
                 """
@@ -164,6 +211,17 @@ class AlertStore:
                                 psycopg.types.json.Jsonb(
                                     related_flows or []
                                 ),
+                                predicted_threat,
+                                threat_confidence,
+                                psycopg.types.json.Jsonb(
+                                    alternative_predictions or []
+                                ),
+                                classification_status,
+                                model_version,
+                                feature_schema_version,
+                                psycopg.types.json.Jsonb(supporting_features)
+                                if supporting_features is not None
+                                else None,
                             ),
                         )
                         alert_id = cursor.fetchone()[0]
@@ -183,6 +241,13 @@ class AlertStore:
                     initiator_ip=initiator_ip,
                     responder_ips=responder_ips or [],
                     related_flows=related_flows or [],
+                    predicted_threat=predicted_threat,
+                    threat_confidence=threat_confidence,
+                    alternative_predictions=alternative_predictions or [],
+                    classification_status=classification_status,
+                    model_version=model_version,
+                    feature_schema_version=feature_schema_version,
+                    supporting_features=supporting_features,
                 )
             except Exception:
                 self.use_postgres = False
@@ -193,9 +258,12 @@ class AlertStore:
         INSERT INTO alerts (
             source_ip, attack_type, severity, confidence,
             first_seen, last_seen, status, event_count, reasons,
-            initiator_ip, responder_ips, related_flows
+            initiator_ip, responder_ips, related_flows,
+            predicted_threat, threat_confidence, alternative_predictions,
+            classification_status, model_version, feature_schema_version,
+            supporting_features
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         with self._connect_sqlite() as conn:
             cursor = conn.cursor()
@@ -209,6 +277,15 @@ class AlertStore:
                     initiator_ip,
                     json.dumps(responder_ips or []),
                     json.dumps(related_flows or []),
+                    predicted_threat,
+                    threat_confidence,
+                    json.dumps(alternative_predictions or []),
+                    classification_status,
+                    model_version,
+                    feature_schema_version,
+                    json.dumps(supporting_features)
+                    if supporting_features is not None
+                    else None,
                 ),
             )
             alert_id = cursor.lastrowid
@@ -225,6 +302,16 @@ class AlertStore:
             status="ACTIVE",
             event_count=1,
             reasons=reasons,
+            initiator_ip=initiator_ip,
+            responder_ips=responder_ips or [],
+            related_flows=related_flows or [],
+            predicted_threat=predicted_threat,
+            threat_confidence=threat_confidence,
+            alternative_predictions=alternative_predictions or [],
+            classification_status=classification_status,
+            model_version=model_version,
+            feature_schema_version=feature_schema_version,
+            supporting_features=supporting_features,
         )
 
     def get(self, alert_id: int) -> Optional[AlertRecord]:
@@ -233,7 +320,10 @@ class AlertStore:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
                        first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 FROM alerts WHERE alert_id = %s
                 """
                 with self._connect_postgres() as connection:
@@ -250,7 +340,10 @@ class AlertStore:
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
                first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
         FROM alerts WHERE alert_id = ?
         """
         with self._connect_sqlite() as conn:
@@ -267,7 +360,10 @@ class AlertStore:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
                        first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 FROM alerts ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -282,7 +378,10 @@ class AlertStore:
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
                first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
         FROM alerts ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -297,7 +396,10 @@ class AlertStore:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
                        first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 FROM alerts WHERE status = 'ACTIVE' ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -312,7 +414,10 @@ class AlertStore:
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
                first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
         FROM alerts WHERE status = 'ACTIVE' ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -327,7 +432,10 @@ class AlertStore:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
                        first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 FROM alerts WHERE status = 'RESOLVED' ORDER BY alert_id
                 """
                 with self._connect_postgres() as connection:
@@ -342,7 +450,10 @@ class AlertStore:
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
                first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
         FROM alerts WHERE status = 'RESOLVED' ORDER BY alert_id
         """
         with self._connect_sqlite() as conn:
@@ -361,7 +472,10 @@ class AlertStore:
                 query = """
                 SELECT alert_id, source_ip, attack_type, severity, confidence,
                        first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 FROM alerts
                 WHERE source_ip = %s AND attack_type = %s AND status = 'ACTIVE'
                 ORDER BY alert_id LIMIT 1
@@ -380,7 +494,10 @@ class AlertStore:
         query = """
         SELECT alert_id, source_ip, attack_type, severity, confidence,
                first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
         FROM alerts
         WHERE source_ip = ? AND attack_type = ? AND status = 'ACTIVE'
         ORDER BY alert_id LIMIT 1
@@ -404,6 +521,13 @@ class AlertStore:
         initiator_ip: Optional[str] = None,
         responder_ips: Optional[List[str]] = None,
         related_flows: Optional[List[dict]] = None,
+        predicted_threat: Optional[str] = None,
+        threat_confidence: Optional[float] = None,
+        alternative_predictions: Optional[List[dict]] = None,
+        classification_status: Optional[str] = None,
+        model_version: Optional[str] = None,
+        feature_schema_version: Optional[str] = None,
+        supporting_features: Optional[dict] = None,
     ) -> Optional[AlertRecord]:
         if self.use_postgres:
             try:
@@ -414,11 +538,18 @@ class AlertStore:
                     event_count = %s, reasons = %s,
                     initiator_ip = %s, responder_ips = %s,
                     related_flows = %s,
+                    predicted_threat = %s, threat_confidence = %s,
+                    alternative_predictions = %s, classification_status = %s,
+                    model_version = %s, feature_schema_version = %s,
+                    supporting_features = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE alert_id = %s
                 RETURNING alert_id, source_ip, attack_type, severity, confidence,
                           first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 """
                 with self._connect_postgres() as connection:
                     with connection.cursor() as cursor:
@@ -435,6 +566,17 @@ class AlertStore:
                                 psycopg.types.json.Jsonb(
                                     related_flows or []
                                 ),
+                                predicted_threat,
+                                threat_confidence,
+                                psycopg.types.json.Jsonb(
+                                    alternative_predictions or []
+                                ),
+                                classification_status,
+                                model_version,
+                                feature_schema_version,
+                                psycopg.types.json.Jsonb(supporting_features)
+                                if supporting_features is not None
+                                else None,
                                 alert_id,
                             ),
                         )
@@ -452,6 +594,9 @@ class AlertStore:
         SET last_seen = ?, severity = ?, confidence = ?,
             event_count = ?, reasons = ?,
             initiator_ip = ?, responder_ips = ?, related_flows = ?,
+            predicted_threat = ?, threat_confidence = ?, alternative_predictions = ?,
+            classification_status = ?, model_version = ?, feature_schema_version = ?,
+            supporting_features = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE alert_id = ?
         """
@@ -468,6 +613,15 @@ class AlertStore:
                     initiator_ip,
                     json.dumps(responder_ips or []),
                     json.dumps(related_flows or []),
+                    predicted_threat,
+                    threat_confidence,
+                    json.dumps(alternative_predictions or []),
+                    classification_status,
+                    model_version,
+                    feature_schema_version,
+                    json.dumps(supporting_features)
+                    if supporting_features is not None
+                    else None,
                     alert_id,
                 ),
             )
@@ -488,7 +642,10 @@ class AlertStore:
                 WHERE alert_id = %s
                 RETURNING alert_id, source_ip, attack_type, severity, confidence,
                           first_seen, last_seen, resolved_at, status, event_count, reasons,
-                       initiator_ip, responder_ips, related_flows
+                       initiator_ip, responder_ips, related_flows,
+                       predicted_threat, threat_confidence, alternative_predictions,
+                       classification_status, model_version, feature_schema_version,
+                       supporting_features
                 """
                 with self._connect_postgres() as connection:
                     with connection.cursor() as cursor:
@@ -575,6 +732,40 @@ class AlertStore:
         else:
             parsed_reasons = []
 
+        predicted_threat = None
+        threat_confidence = None
+        alternative_predictions = []
+        classification_status = None
+        model_version = None
+        feature_schema_version = None
+        supporting_features = None
+
+        if len(row) > 14:
+            predicted_threat = row[14]
+            threat_confidence = float(row[15]) if row[15] is not None else None
+
+            raw_alts = row[16]
+            if isinstance(raw_alts, list):
+                alternative_predictions = raw_alts
+            elif isinstance(raw_alts, str):
+                try:
+                    alternative_predictions = json.loads(raw_alts)
+                except Exception:
+                    alternative_predictions = []
+
+            classification_status = row[17]
+            model_version = row[18]
+            feature_schema_version = row[19]
+
+            raw_supp = row[20] if len(row) > 20 else None
+            if isinstance(raw_supp, dict):
+                supporting_features = raw_supp
+            elif isinstance(raw_supp, str):
+                try:
+                    supporting_features = json.loads(raw_supp)
+                except Exception:
+                    supporting_features = None
+
         return AlertRecord(
             alert_id=row[0],
             source_ip=str(row[1]),
@@ -610,5 +801,12 @@ class AlertStore:
                     else []
                 )
             ),
+            predicted_threat=predicted_threat,
+            threat_confidence=threat_confidence,
+            alternative_predictions=alternative_predictions,
+            classification_status=classification_status,
+            model_version=model_version,
+            feature_schema_version=feature_schema_version,
+            supporting_features=supporting_features,
         )
 

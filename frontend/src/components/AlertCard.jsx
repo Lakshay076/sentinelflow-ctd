@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, BrainCircuit } from "lucide-react";
 import { DETECTORS_CONFIG } from "../config";
 import { SeverityBadge, StatusBadge } from "./Badges";
 
@@ -26,6 +26,35 @@ export function AlertCard({ alert }) {
           <span className="attack-code-tag">{alert.attack_type}</span>
           <SeverityBadge severity={alert.severity} />
           <StatusBadge status={alert.status} />
+          {(alert.predicted_threat || alert.classification_status) && (
+            <span
+              className="attack-code-tag"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                background:
+                  alert.predicted_threat && alert.predicted_threat !== "UNCLASSIFIED"
+                    ? "rgba(16, 185, 129, 0.14)"
+                    : "rgba(148, 163, 184, 0.14)",
+                color:
+                  alert.predicted_threat && alert.predicted_threat !== "UNCLASSIFIED"
+                    ? "#34d399"
+                    : "var(--text-secondary)",
+                border: "1px solid currentColor",
+              }}
+              title={`Supervised ML Triage (${alert.classification_status || "CLASSIFIED"})`}
+            >
+              <BrainCircuit size={12} />
+              {alert.predicted_threat
+                ? `${alert.predicted_threat}${
+                    alert.threat_confidence != null
+                      ? ` (${Math.round(alert.threat_confidence * 100)}%)`
+                      : ""
+                  }`
+                : alert.classification_status}
+            </span>
+          )}
         </div>
 
         <div className="alert-meta">
